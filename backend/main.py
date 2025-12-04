@@ -1,0 +1,550 @@
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, FileResponse
+import os
+import torch
+import io
+from PIL import Image
+from dotenv import load_dotenv
+from utils.gpu_monitor import GPUMonitor
+from config import settings
+from models.ollama_vision import get_ollama_engine as get_llava_engine
+from models.video_processor import get_video_processor
+import threading
+import json
+
+load_dotenv()
+
+# ============================================================
+# FASTAPI APP INITIALIZATION
+# ============================================================
+
+app = FastAPI(
+    title="VisLang Backend",
+    description="Real-time Multimodal Vision-Language Assistant API",
+    version="0.2.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Create uploads folder if it doesn't exist
+os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
+
+# Video processing storage
+active_jobs = {}
+
+# ============================================================
+# MODEL LOADING AT STARTUP
+# ============================================================
+
+print("="*60)
+print("🚀 Loading VisLang Models at Startup")
+print("="*60)
+
+# Load YOLOv8
+try:
+    from ultralytics import YOLO
+    yolo_model = YOLO(settings.YOLO_MODEL)
+    print(f"✅ YOLOv8 loaded: {settings.YOLO_MODEL}")
+except Exception as e:
+    print(f"❌ Failed to load YOLOv8: {e}")
+    yolo_model = None
+
+# Load CLIP
+try:
+    import clip
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    clip_model, clip_preprocess = clip.load(settings.CLIP_MODEL, device=device)
+    print(f"✅ CLIP loaded: {settings.CLIP_MODEL} on {device}")
+except Exception as e:
+    print(f"❌ Failed to load CLIP: {e}")
+    clip_model = None
+    clip_preprocess = None
+
+print("✅ Backend models initialized")
+print("📌 Ollama (LLaVA) will load on first chat/describe request")
+print("📌 Video Processor ready for video uploads")
+print("="*60 + "\n")
+
+# ============================================================
+# HEALTH & STATUS ENDPOINTS
+# ============================================================
+
+@app.get('/health')
+async def health_check():
+    """Health check endpoint with system info"""
+    gpu_info = GPUMonitor.check_gpu_availability()
+    sys_memory = GPUMonitor.get_system_memory_usage()
+    
+    return JSONResponse({
+        'status': 'healthy',
+        'service': 'VisLang Backend',
+        'version': '0.2.0',
+        'device': settings.DEVICE,
+        'gpu': gpu_info,
+        'system_memory': sys_memory,
+        'models': {
+            'yolo': 'loaded' if yolo_model else 'not_loaded',
+            'clip': 'loaded' if clip_model else 'not_loaded',
+            'ollama_llava': 'lazy-loading',
+            'video_processor': 'ready'
+        }
+    })
+
+@app.get('/api/v1/status')
+async def get_status():
+    """Detailed system status endpoint"""
+    pytorch_info = {
+        'pytorch_version': torch.__version__,
+        'cuda_available': torch.cuda.is_available(),
+        'device': settings.DEVICE
+    }
+    
+    return JSONResponse({
+        'service': 'VisLang Backend',
+        'version': '0.2.0',
+        'pytorch': pytorch_info,
+        'models_loaded': {
+            'yolo': yolo_model is not None,
+            'clip': clip_model is not None,
+            'ollama_llava': 'lazy-loading (loads on first request)',
+            'video_processor': 'ready'
+        },
+        'features': {
+            'image_detection': yolo_model is not None,
+            'image_chat': True,
+            'video_processing': yolo_model is not None
+        }
+    })
+
+# ============================================================
+# ROOT ENDPOINT
+# ============================================================
+
+@app.get('/')
+async def root():
+    """Root endpoint with API documentation"""
+    return JSONResponse({
+        'service': 'VisLang Backend API',
+        'version': '0.2.0',
+        'features': {
+            'image_detection': '✅ Object Detection with YOLOv8',
+            'image_chat': '✅ Vision-Language Chat with Ollama/LLaVA',
+            'video_processing': '✅ Real-Time Video Detection'
+        },
+        'endpoints': {
+            'health': '/health',
+            'status': '/api/v1/status',
+            'models': '/api/v1/models',
+            'image_detect': 'POST /api/v1/detect',
+            'image_chat': 'POST /api/v1/chat',
+            'image_describe': 'POST /api/v1/describe',
+            'video_upload': 'POST /api/v1/video/upload',
+            'video_process': 'POST /api/v1/video/process',
+            'video_download': 'GET /api/v1/video/download',
+            'docs': '/docs (Swagger UI)',
+            'redoc': '/redoc (ReDoc)'
+        }
+    })
+
+# ============================================================
+# IMAGE DETECTION ENDPOINTS
+# ============================================================
+
+@app.post('/api/v1/detect')
+async def detect_objects(file: UploadFile = File(...)):
+    """YOLOv8 object detection endpoint"""
+    if yolo_model is None:
+        raise HTTPException(status_code=500, detail="YOLOv8 model not loaded")
+    
+    try:
+        print(f"\n📸 Detection request: {file.filename}")
+        
+        # Read uploaded file
+        contents = await file.read()
+        
+        # Save temporary file
+        temp_path = f"{settings.UPLOAD_FOLDER}/{file.filename}"
+        with open(temp_path, 'wb') as f:
+            f.write(contents)
+        
+        # Run detection
+        results = yolo_model.predict(
+            source=temp_path,
+            conf=settings.CONF_THRESHOLD,
+            iou=settings.IOU_THRESHOLD,
+            device=settings.DEVICE,
+            verbose=False
+        )
+        
+        # Extract results
+        detections = []
+        for result in results:
+            if result.boxes is not None:
+                for box in result.boxes:
+                    detections.append({
+                        'class': int(box.cls),
+                        'class_name': yolo_model.names[int(box.cls)],
+                        'confidence': float(box.conf),
+                        'bbox': {
+                            'x1': float(box.xyxy[0][0]),
+                            'y1': float(box.xyxy[0][1]),
+                            'x2': float(box.xyxy[0][2]),
+                            'y2': float(box.xyxy[0][3])
+                        }
+                    })
+        
+        # Clean up
+        os.remove(temp_path)
+        
+        print(f"✅ Detection complete: {len(detections)} objects found")
+        
+        return JSONResponse({
+            'filename': file.filename,
+            'detections': detections,
+            'detection_count': len(detections)
+        })
+        
+    except Exception as e:
+        print(f"❌ Detection error: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={'error': str(e)}
+        )
+
+@app.get('/api/v1/models')
+async def get_models():
+    """Get list of loaded models and their info"""
+    return JSONResponse({
+        'models': {
+            'yolo': {
+                'name': 'YOLOv8n',
+                'model_file': settings.YOLO_MODEL,
+                'loaded': yolo_model is not None,
+                'type': 'object_detection',
+                'classes': 80 if yolo_model else 0
+            },
+            'clip': {
+                'name': 'CLIP ViT-B/32',
+                'model_name': settings.CLIP_MODEL,
+                'loaded': clip_model is not None,
+                'type': 'vision_embeddings'
+            },
+            'ollama_llava': {
+                'name': 'LLaVA-1.5-7B',
+                'model_name': 'liuhaotian/llava-v1.5-7b',
+                'status': 'lazy-loading',
+                'type': 'vision_language_model',
+                'backend': 'Ollama (CPU optimized)'
+            },
+            'video_processor': {
+                'name': 'VideoProcessor',
+                'status': 'ready',
+                'type': 'video_analysis',
+                'uses_model': 'YOLOv8'
+            }
+        }
+    })
+
+# ============================================================
+# IMAGE CHAT/VQA ENDPOINTS
+# ============================================================
+
+@app.post('/api/v1/chat')
+async def chat_with_image(
+    file: UploadFile = File(...),
+    question: str = Form(...)
+):
+    """
+    Vision-Language Chat using Ollama LLaVA
+    First request loads model, subsequent requests use cached model
+    """
+    try:
+        print(f"\n💬 Chat request: {question}")
+        
+        # Get lazy-loaded engine
+        llava = get_llava_engine()
+        
+        # Read image
+        image_bytes = await file.read()
+        image = Image.open(io.BytesIO(image_bytes))
+        
+        # Get response
+        response = llava.chat(image, question)
+        
+        print(f"✅ Chat response generated")
+        
+        return JSONResponse({
+            'question': question,
+            'answer': response,
+            'filename': file.filename,
+            'model': 'LLaVA (Ollama CPU)',
+            'device': 'CPU'
+        })
+        
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Chat error: {error_msg}")
+        return JSONResponse(
+            status_code=500,
+            content={'error': error_msg}
+        )
+
+@app.post('/api/v1/describe')
+async def describe_image(file: UploadFile = File(...)):
+    """
+    Get detailed image description using Ollama LLaVA
+    """
+    try:
+        print(f"\n📝 Description request")
+        
+        # Get lazy-loaded engine
+        llava = get_llava_engine()
+        
+        # Read image
+        image_bytes = await file.read()
+        image = Image.open(io.BytesIO(image_bytes))
+        
+        # Generate description
+        prompt = "Describe this image in detail. What objects, people, or scenes do you see?"
+        description = llava.chat(image, prompt)
+        
+        print(f"✅ Description generated")
+        
+        return JSONResponse({
+            'filename': file.filename,
+            'description': description,
+            'model': 'LLaVA (Ollama CPU)',
+            'device': 'CPU'
+        })
+        
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Description error: {error_msg}")
+        return JSONResponse(
+            status_code=500,
+            content={'error': error_msg}
+        )
+
+# ============================================================
+# VIDEO PROCESSING ENDPOINTS
+# ============================================================
+
+@app.post('/api/v1/video/upload')
+async def upload_video(file: UploadFile = File(...)):
+    """Upload video file for processing"""
+    try:
+        print(f"\n📹 Video upload: {file.filename}")
+        
+        # Validate file is video
+        valid_video_formats = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm']
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        
+        if file_ext not in valid_video_formats:
+            return JSONResponse(
+                status_code=400,
+                content={'error': f'Invalid format. Supported: {valid_video_formats}'}
+            )
+        
+        # Save uploaded file
+        video_path = f"{settings.UPLOAD_FOLDER}/{file.filename}"
+        contents = await file.read()
+        
+        with open(video_path, 'wb') as f:
+            f.write(contents)
+        
+        # Get file size
+        file_size = len(contents) / (1024 * 1024)  # MB
+        
+        print(f"✅ Video uploaded: {file_size:.2f} MB")
+        
+        return JSONResponse({
+            'filename': file.filename,
+            'path': video_path,
+            'size_mb': round(file_size, 2),
+            'status': 'uploaded'
+        })
+        
+    except Exception as e:
+        print(f"❌ Upload error: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={'error': str(e)}
+        )
+
+@app.post('/api/v1/video/process')
+async def process_video(
+    video_path: str = Form(...),
+    conf_threshold: float = Form(0.5)
+):
+    """Process uploaded video with YOLOv8 detection"""
+    try:
+        if not video_path:
+            return JSONResponse(
+                status_code=400,
+                content={'error': 'video_path required'}
+            )
+        
+        if not os.path.exists(video_path):
+            return JSONResponse(
+                status_code=404,
+                content={'error': 'Video file not found'}
+            )
+        
+        print(f"\n🎬 Processing video: {video_path}")
+        
+        if yolo_model is None:
+            return JSONResponse(
+                status_code=500,
+                content={'error': 'YOLOv8 model not loaded'}
+            )
+        
+        # Generate output path
+        filename = os.path.basename(video_path)
+        name, ext = os.path.splitext(filename)
+        output_path = f"{settings.UPLOAD_FOLDER}/{name}_detected.mp4"
+        
+        # Get processor
+        processor = get_video_processor(yolo_model)
+        
+        # Process video
+        stats = processor.process_video(
+            video_path,
+            output_path=output_path,
+            conf_threshold=conf_threshold
+        )
+        
+        print(f"✅ Video processing complete")
+        
+        return JSONResponse({
+            'status': 'completed',
+            'input_file': filename,
+            'output_file': os.path.basename(output_path),
+            'stats': stats,
+            'download_url': f'/api/v1/video/download?file={os.path.basename(output_path)}'
+        })
+        
+    except Exception as e:
+        print(f"❌ Processing error: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={'error': str(e)}
+        )
+
+@app.get('/api/v1/video/download')
+async def download_video(file: str):
+    """Download processed video file"""
+    try:
+        file_path = os.path.join(settings.UPLOAD_FOLDER, file)
+        
+        if not os.path.exists(file_path):
+            return JSONResponse(
+                status_code=404,
+                content={'error': 'File not found'}
+            )
+        
+        print(f"\n📥 Downloading: {file}")
+        
+        return FileResponse(
+            path=file_path,
+            filename=file,
+            media_type='video/mp4'
+        )
+        
+    except Exception as e:
+        print(f"❌ Download error: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={'error': str(e)}
+        )
+
+@app.post('/api/v1/video/stream')
+async def stream_video_processing(
+    video_path: str = Form(...),
+    conf_threshold: float = Form(0.5)
+):
+    """Stream video processing progress (for real-time updates)"""
+    try:
+        if yolo_model is None:
+            return JSONResponse(
+                status_code=500,
+                content={'error': 'YOLOv8 model not loaded'}
+            )
+        
+        processor = get_video_processor(yolo_model)
+        
+        progress_data = []
+        
+        def on_frame(data):
+            progress_data.append(data)
+        
+        processor.process_video_streaming(
+            video_path,
+            conf_threshold=conf_threshold,
+            callback=on_frame
+        )
+        
+        return JSONResponse({
+            'status': 'completed',
+            'total_frames_processed': len(progress_data),
+            'frames': progress_data[-10:]  # Last 10 frames
+        })
+        
+    except Exception as e:
+        print(f"❌ Streaming error: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={'error': str(e)}
+        )
+
+# ============================================================
+# ERROR HANDLERS
+# ============================================================
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Global exception handler"""
+    print(f"❌ Unhandled exception: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={'error': str(exc)}
+    )
+
+# ============================================================
+# SERVER STARTUP
+# ============================================================
+
+if __name__ == '__main__':
+    import uvicorn
+    print("\n" + "="*70)
+    print("🚀 VISLANG BACKEND - STARTING SERVER")
+    print("="*70)
+    print(f"Host: {settings.SERVER_HOST}")
+    print(f"Port: {settings.SERVER_PORT}")
+    print(f"Device: {settings.DEVICE}")
+    print("="*70)
+    print("\n📚 API DOCUMENTATION:")
+    print(f"  • Swagger UI: http://localhost:{settings.SERVER_PORT}/docs")
+    print(f"  • ReDoc: http://localhost:{settings.SERVER_PORT}/redoc")
+    print("\n✨ FEATURES AVAILABLE:")
+    print("  ✅ Image Object Detection (YOLOv8)")
+    print("  ✅ Image Chat & Description (Ollama LLaVA)")
+    print("  ✅ Video Real-Time Processing (YOLOv8 + OpenCV)")
+    print("\n⏳ NOTE:")
+    print("  • Ollama LLaVA loads on first chat request (2-3 minutes)")
+    print("  • Video processing runs locally without cloud dependency")
+    print("="*70 + "\n")
+    
+    uvicorn.run(
+        app,
+        host=settings.SERVER_HOST,
+        port=settings.SERVER_PORT,
+        reload=True
+    )
