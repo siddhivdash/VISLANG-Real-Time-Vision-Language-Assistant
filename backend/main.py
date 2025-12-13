@@ -20,23 +20,41 @@ import time as time_module
 import cv2
 from fastapi.staticfiles import StaticFiles
 import time
-
-
+import traceback
 
 load_dotenv()
 
+# ============================================================
+# HELPER: CONVERT NUMPY TO PYTHON NATIVE TYPES
+# ============================================================
+def to_native(obj):
+    """
+    Recursively convert NumPy types to Python native types
+    to avoid 'int32 is not JSON serializable' errors.
+    """
+    if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
+        np.int16, np.int32, np.int64, np.uint8,
+        np.uint16, np.uint32, np.uint64)):
+        return int(obj)
+    elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: to_native(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [to_native(i) for i in obj]
+    return obj
 
 # ============================================================
 # FASTAPI APP INITIALIZATION
 # ============================================================
 
-
 app = FastAPI(
     title="VisLang Backend",
     description="Real-time Multimodal Vision-Language Assistant API",
-    version="0.2.0"
+    version="0.2.3"
 )
-
 
 # Add CORS middleware
 app.add_middleware(
@@ -48,40 +66,37 @@ app.add_middleware(
 )
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
-
 # Create uploads folder if it doesn't exist
 os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
 os.makedirs('outputs', exist_ok=True)
 
-
 # Video processing storage
 active_jobs = {}
-
 
 # Initialize SAM Engine (lazy loading - loads on first request)
 sam_engine = None
 predictor = None
-
 
 def get_sam_engine():
     """Lazy load SAM engine"""
     global sam_engine, predictor
     if sam_engine is None:
         print("🚀 Initializing SAM Engine for first time...")
-        sam_engine = SAMSegmentationEngine(model_type="vit_b", device="cpu")
-        predictor = sam_engine.predictor
+        try:
+            sam_engine = SAMSegmentationEngine(model_type="vit_b", device="cpu")
+            predictor = sam_engine.predictor
+        except Exception as e:
+            print(f"❌ Failed to load SAM Engine: {e}")
+            raise e
     return sam_engine
-
 
 # ============================================================
 # MODEL LOADING AT STARTUP
 # ============================================================
 
-
 print("="*60)
 print("🚀 Loading VisLang Models at Startup")
 print("="*60)
-
 
 # Load YOLOv8
 try:
@@ -91,7 +106,6 @@ try:
 except Exception as e:
     print(f"❌ Failed to load YOLOv8: {e}")
     yolo_model = None
-
 
 # Load CLIP
 try:
@@ -104,18 +118,15 @@ except Exception as e:
     clip_model = None
     clip_preprocess = None
 
-
 print("✅ Backend models initialized")
 print("📌 Ollama (LLaVA) will load on first chat/describe request")
 print("📌 Video Processor ready for video uploads")
 print("📌 SAM will load on first segmentation request")
 print("="*60 + "\n")
 
-
 # ============================================================
 # HEALTH & STATUS ENDPOINTS
 # ============================================================
-
 
 @app.get('/health')
 async def health_check():
@@ -123,10 +134,10 @@ async def health_check():
     gpu_info = GPUMonitor.check_gpu_availability()
     sys_memory = GPUMonitor.get_system_memory_usage()
     
-    return JSONResponse({
+    return JSONResponse(to_native({
         'status': 'healthy',
         'service': 'VisLang Backend',
-        'version': '0.2.0',
+        'version': '0.2.3',
         'device': settings.DEVICE,
         'gpu': gpu_info,
         'system_memory': sys_memory,
@@ -137,8 +148,7 @@ async def health_check():
             'sam': 'lazy-loading',
             'video_processor': 'ready'
         }
-    })
-
+    }))
 
 @app.get('/api/v1/status')
 async def get_status():
@@ -149,9 +159,9 @@ async def get_status():
         'device': settings.DEVICE
     }
     
-    return JSONResponse({
+    return JSONResponse(to_native({
         'service': 'VisLang Backend',
-        'version': '0.2.0',
+        'version': '0.2.3',
         'pytorch': pytorch_info,
         'models_loaded': {
             'yolo': yolo_model is not None,
@@ -166,20 +176,18 @@ async def get_status():
             'video_processing': yolo_model is not None,
             'image_segmentation': True
         }
-    })
-
+    }))
 
 # ============================================================
 # ROOT ENDPOINT
 # ============================================================
-
 
 @app.get('/')
 async def root():
     """Root endpoint with API documentation"""
     return JSONResponse({
         'service': 'VisLang Backend API',
-        'version': '0.2.0',
+        'version': '0.2.3',
         'features': {
             'image_detection': '✅ Object Detection with YOLOv8',
             'image_chat': '✅ Vision-Language Chat with Ollama/LLaVA',
@@ -202,11 +210,9 @@ async def root():
         }
     })
 
-
 # ============================================================
 # IMAGE DETECTION ENDPOINTS
 # ============================================================
-
 
 @app.post('/api/v1/detect')
 async def detect_objects(file: UploadFile = File(...)):
@@ -256,11 +262,11 @@ async def detect_objects(file: UploadFile = File(...)):
         
         print(f"✅ Detection complete: {len(detections)} objects found")
         
-        return JSONResponse({
+        return JSONResponse(to_native({
             'filename': file.filename,
             'detections': detections,
             'detection_count': len(detections)
-        })
+        }))
         
     except Exception as e:
         print(f"❌ Detection error: {str(e)}")
@@ -269,77 +275,22 @@ async def detect_objects(file: UploadFile = File(...)):
             content={'error': str(e)}
         )
 
-
-@app.get('/api/v1/models')
-async def get_models():
-    """Get list of loaded models and their info"""
-    return JSONResponse({
-        'models': {
-            'yolo': {
-                'name': 'YOLOv8n',
-                'model_file': settings.YOLO_MODEL,
-                'loaded': yolo_model is not None,
-                'type': 'object_detection',
-                'classes': 80 if yolo_model else 0
-            },
-            'clip': {
-                'name': 'CLIP ViT-B/32',
-                'model_name': settings.CLIP_MODEL,
-                'loaded': clip_model is not None,
-                'type': 'vision_embeddings'
-            },
-            'ollama_llava': {
-                'name': 'LLaVA-1.5-7B',
-                'model_name': 'liuhaotian/llava-v1.5-7b',
-                'status': 'lazy-loading',
-                'type': 'vision_language_model',
-                'backend': 'Ollama (CPU optimized)'
-            },
-            'sam': {
-                'name': 'Segment Anything Model (ViT-B)',
-                'status': 'lazy-loading',
-                'type': 'image_segmentation',
-                'device': 'CPU'
-            },
-            'video_processor': {
-                'name': 'VideoProcessor',
-                'status': 'ready',
-                'type': 'video_analysis',
-                'uses_model': 'YOLOv8'
-            }
-        }
-    })
-
-
 # ============================================================
 # IMAGE CHAT/VQA ENDPOINTS
 # ============================================================
-
 
 @app.post('/api/v1/chat')
 async def chat_with_image(
     file: UploadFile = File(...),
     question: str = Form(...)
 ):
-    """
-    Vision-Language Chat using Ollama LLaVA
-    First request loads model, subsequent requests use cached model
-    """
     try:
         print(f"\n💬 Chat request: {question}")
-        
-        # Get lazy-loaded engine
         llava = get_llava_engine()
-        
-        # Read image
         image_bytes = await file.read()
         image = Image.open(io.BytesIO(image_bytes))
-        
-        # Get response
         response = llava.chat(image, question)
-        
         print(f"✅ Chat response generated")
-        
         return JSONResponse({
             'question': question,
             'answer': response,
@@ -347,7 +298,6 @@ async def chat_with_image(
             'model': 'LLaVA (Ollama CPU)',
             'device': 'CPU'
         })
-        
     except Exception as e:
         error_msg = str(e)
         print(f"❌ Chat error: {error_msg}")
@@ -356,35 +306,22 @@ async def chat_with_image(
             content={'error': error_msg}
         )
 
-
 @app.post('/api/v1/describe')
 async def describe_image(file: UploadFile = File(...)):
-    """
-    Get detailed image description using Ollama LLaVA
-    """
     try:
         print(f"\n📝 Description request")
-        
-        # Get lazy-loaded engine
         llava = get_llava_engine()
-        
-        # Read image
         image_bytes = await file.read()
         image = Image.open(io.BytesIO(image_bytes))
-        
-        # Generate description
         prompt = "Describe this image in detail. What objects, people, or scenes do you see?"
         description = llava.chat(image, prompt)
-        
         print(f"✅ Description generated")
-        
         return JSONResponse({
             'filename': file.filename,
             'description': description,
             'model': 'LLaVA (Ollama CPU)',
             'device': 'CPU'
         })
-        
     except Exception as e:
         error_msg = str(e)
         print(f"❌ Description error: {error_msg}")
@@ -393,11 +330,9 @@ async def describe_image(file: UploadFile = File(...)):
             content={'error': error_msg}
         )
 
-
 # ============================================================
 # SEGMENTATION ENDPOINTS
 # ============================================================
-
 
 @app.post("/api/v1/segment/point")
 async def segment_point(
@@ -405,85 +340,62 @@ async def segment_point(
     points: str = Form(...),
     labels: str = Form(...)
 ):
-    """Segment image using point prompts (SAM) - 100% FIXED"""
+    """Segment image using point prompts (SAM)"""
     try:
-        # Parse JSON strings
         points_list = json.loads(points)
         labels_list = json.loads(labels)
         
-        # Validate inputs
         if len(points_list) == 0:
             raise ValueError("At least one point required")
-        
         if len(points_list) != len(labels_list):
             raise ValueError(f"Points/labels mismatch: {len(points_list)} vs {len(labels_list)}")
         
         print(f"🎯 Segmentation request: {len(points_list)} points")
         
-        # Read image
         image_data = await file.read()
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
         image_np = np.array(image)
         
-        print(f"   Image shape: {image_np.shape}")
+        points_np = np.array(points_list, dtype=np.float32)
+        labels_np = np.array(labels_list, dtype=np.int32)
         
-        # Convert to numpy arrays with correct dtypes
-        points_np = np.array(points_list, dtype=np.float32)  # Shape: (N, 2)
-        labels_np = np.array(labels_list, dtype=np.int32)     # Shape: (N,)
-        
-        print(f"   Points shape: {points_np.shape}, Labels shape: {labels_np.shape}")
-        
-        # Get SAM predictor (lazy load)
         engine = get_sam_engine()
         pred = engine.predictor
-        
-        # Set image FIRST
-        print("   Setting image...")
         pred.set_image(image_np)
         
-        # Run SAM prediction
         print("   Running SAM prediction...")
         masks, scores, logits = pred.predict(
-            point_coords=points_np,      # Shape: (N, 2)
-            point_labels=labels_np,      # Shape: (N,)
+            point_coords=points_np,
+            point_labels=labels_np,
             multimask_output=False
         )
         
-        # ✅ FIX #1: Get FIRST mask from output (not entire array!)
-        mask = masks[0]  # THIS IS THE KEY FIX!
+        mask = masks[0]
         
-        print(f"   Mask shape: {mask.shape}, dtype: {mask.dtype}")
-        
-        # Create outputs directory
         os.makedirs('outputs', exist_ok=True)
+        timestamp = int(time_module.time() * 1000)
         
-        # Save mask as binary image
         mask_binary = (mask * 255).astype(np.uint8)
         mask_img = Image.fromarray(mask_binary)
-        mask_path = f'outputs/mask_{int(time_module.time() * 1000)}.png'
+        mask_path = f'outputs/mask_{timestamp}.png'
         mask_img.save(mask_path)
-        print(f"   ✅ Mask saved: {mask_path}")
         
-        # Create visualization: SIMPLE green overlay
         viz_img = image_np.copy().astype(np.float32)
-        # Set masked pixels to green [0, 255, 0]
         viz_img[mask] = [0, 255, 0]
         viz_img = np.clip(viz_img, 0, 255).astype(np.uint8)
         viz_img_pil = Image.fromarray(viz_img)
-        viz_path = f'outputs/viz_{int(time_module.time() * 1000)}.png'
+        viz_path = f'outputs/viz_{timestamp}.png'
         viz_img_pil.save(viz_path)
-        print(f"   ✅ Visualization saved: {viz_path}")
         
-        # ✅ FIX #2: Correct statistics calculations
         pixels = int(np.sum(mask))
-        total_pixels = image_np.shape[0] * image_np.shape[1]  # H * W
+        total_pixels = image_np.shape[0] * image_np.shape[1]
         coverage = (pixels / total_pixels) * 100
         confidence = float(scores[0])
         
         print(f"   ✅ Segmentation success!")
-        print(f"      Pixels: {pixels}, Coverage: {coverage:.2f}%, Confidence: {confidence:.2f}")
         
-        return JSONResponse({
+        # Use to_native helper to clean response
+        return JSONResponse(to_native({
             "success": True,
             "mask": f"/{mask_path}",
             "visualization": f"/{viz_path}",
@@ -491,99 +403,73 @@ async def segment_point(
             "coverage_percent": coverage,
             "confidence": confidence,
             "image_size": {
-                "width": int(image_np.shape[1]),   # Width
-                "height": int(image_np.shape[0])   # Height
+                "width": int(image_np.shape[1]),
+                "height": int(image_np.shape[0])
             }
-        })
+        }))
         
     except ValueError as e:
         print(f"❌ ValueError: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        return JSONResponse(status_code=400, content={'error': str(e)})
     except Exception as e:
         print(f"❌ Segmentation error: {str(e)}")
-        import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Segmentation error: {str(e)}")
-    
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 @app.post("/api/v1/segment/automatic")
 async def segment_automatic(file: UploadFile = File(...)):
-    """Automatic segmentation - segments ALL objects without manual input!"""
+    """Automatic segmentation"""
     try:
         print(f"🎯 Automatic segmentation request")
         
-        # Read image
         image_data = await file.read()
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
         image_np = np.array(image)
         
-        print(f"   Image shape: {image_np.shape}")
-        
-        # Get SAM predictor
         engine = get_sam_engine()
         pred = engine.predictor
-        
-        # Set image
         pred.set_image(image_np)
         
-        # AUTOMATIC segmentation (no points needed!)
         print("   Running automatic segmentation...")
         masks, scores, logits = pred.predict(
-            point_coords=None,      # No manual points!
-            point_labels=None,      # No labels!
-            multimask_output=True   # Get ALL objects
+            point_coords=None,
+            point_labels=None,
+            multimask_output=True
         )
         
-        print(f"   Found {len(masks)} objects")
-        
-        # Create outputs directory
         os.makedirs('outputs', exist_ok=True)
-        
-        # Create visualization with different colors for each object
+        timestamp = int(time_module.time() * 1000)
         viz_img = image_np.copy().astype(np.float32)
         
         colors = [
-            [255, 0, 0],      # Red
-            [0, 255, 0],      # Green
-            [0, 0, 255],      # Blue
-            [255, 255, 0],    # Yellow
-            [255, 0, 255],    # Magenta
-            [0, 255, 255],    # Cyan
-            [255, 165, 0],    # Orange
-            [128, 0, 128],    # Purple
+            [255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0],
+            [255, 0, 255], [0, 255, 255], [255, 165, 0], [128, 0, 128],
         ]
         
-        # Color each object differently
         for idx, mask in enumerate(masks):
             color = colors[idx % len(colors)]
             viz_img[mask] = color
         
         viz_img = np.clip(viz_img, 0, 255).astype(np.uint8)
         viz_img_pil = Image.fromarray(viz_img)
-        viz_path = f'outputs/auto_viz_{int(time_module.time() * 1000)}.png'
+        viz_path = f'outputs/auto_viz_{timestamp}.png'
         viz_img_pil.save(viz_path)
-        print(f"   ✅ Visualization saved: {viz_path}")
         
-        # Create combined mask (all objects together)
         combined_mask = np.zeros_like(masks[0], dtype=bool)
         for mask in masks:
             combined_mask = combined_mask | mask
         
         mask_binary = (combined_mask * 255).astype(np.uint8)
         mask_img = Image.fromarray(mask_binary)
-        mask_path = f'outputs/auto_mask_{int(time_module.time() * 1000)}.png'
+        mask_path = f'outputs/auto_mask_{timestamp}.png'
         mask_img.save(mask_path)
-        print(f"   ✅ Mask saved: {mask_path}")
         
-        # Statistics
         pixels = int(np.sum(combined_mask))
-        total_pixels = image_np.shape[0] * image_np.shape[1]
-        coverage = (pixels / total_pixels) * 100
+        coverage = (pixels / (image_np.shape[0] * image_np.shape[1])) * 100
         avg_confidence = float(np.mean(scores))
         
-        print(f"   ✅ Success! Found {len(masks)} objects")
-        
-        return JSONResponse({
+        # Use to_native helper to clean response
+        return JSONResponse(to_native({
             "success": True,
             "mask": f"/{mask_path}",
             "visualization": f"/{viz_path}",
@@ -595,14 +481,12 @@ async def segment_automatic(file: UploadFile = File(...)):
                 "width": int(image_np.shape[1]),
                 "height": int(image_np.shape[0])
             }
-        })
+        }))
         
     except Exception as e:
         print(f"❌ Segmentation error: {str(e)}")
-        import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
-
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 @app.post("/api/v1/segment/box")
 async def segment_box(
@@ -612,78 +496,68 @@ async def segment_box(
 ):
     """
     Segment image using a bounding box prompt (SAM).
-    Expects 'box' as a JSON list [x1, y1, x2, y2].
     """
     try:
-        # Parse the bounding box JSON
         box_list = json.loads(box)
         if len(box_list) != 4:
             raise ValueError("Box must be a list of four numbers [x1, y1, x2, y2]")
         
         print(f"🎯 Box segmentation request: box={box_list}, class={class_name}")
 
-        # Read and prepare image
         image_data = await file.read()
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
         image_np = np.array(image)
         h, w = image_np.shape[:2]
-        print(f"   Image size: {w}x{h}")
 
-        # Ensure box coordinates are integers within image bounds
         x1, y1, x2, y2 = map(int, box_list)
         x1 = np.clip(x1, 0, w-1); y1 = np.clip(y1, 0, h-1)
         x2 = np.clip(x2, 0, w-1); y2 = np.clip(y2, 0, h-1)
         if x2 <= x1 or y2 <= y1:
             raise ValueError("Invalid box coordinates after clipping")
 
-        # Get SAM predictor
         engine = get_sam_engine()
         pred = engine.predictor
         pred.set_image(image_np)
 
-        # Run SAM with box prompt
         print("   Running SAM prediction with bounding box...")
         box_np = np.array(box_list, dtype=np.float32)
+        
+        # NOTE: Standard SAM Predictor 'predict' method takes 'box' as a separate argument.
         masks, scores, logits = pred.predict(
+            point_coords=None,
+            point_labels=None,
             box=box_np,
             multimask_output=False
         )
-        mask = masks[0]  # single mask
-        score = scores[0] if len(scores) > 0 else None
+        mask = masks[0]
+        score = scores[0] if len(scores) > 0 else 0.0
 
-        # Create outputs directory if not exists
         os.makedirs('outputs', exist_ok=True)
         timestamp = int(time.time() * 1000)
 
-        # Save mask image (binary)
+        # 1. Mask
         mask_binary = (mask * 255).astype(np.uint8)
         mask_img = Image.fromarray(mask_binary)
         mask_path = f'outputs/mask_{timestamp}.png'
         mask_img.save(mask_path)
-        print(f"   ✅ Mask saved: {mask_path}")
 
-        # Save cropped image (RGB)
+        # 2. Crop
         crop_img = image.crop((x1, y1, x2, y2))
         crop_path = f'outputs/crop_{timestamp}.png'
         crop_img.save(crop_path)
-        print(f"   ✅ Cropped image saved: {crop_path}")
 
-        # Save object image with background transparent (RGBA)
+        # 3. Transparent Object
         image_rgba = image.convert("RGBA")
         alpha_mask = Image.fromarray(mask_binary).convert("L")
         image_rgba.putalpha(alpha_mask)
         object_path = f'outputs/object_{timestamp}.png'
         image_rgba.save(object_path)
-        print(f"   ✅ Object (background removed) saved: {object_path}")
 
-        # Compute statistics
         pixels = int(np.sum(mask))
-        total_pixels = h * w
-        coverage = (pixels / total_pixels) * 100
-        print(f"   Pixels: {pixels}, Coverage: {coverage:.2f}%, Confidence: {score:.2f}")
-
-        # Build JSON response with download URLs
-        return JSONResponse({
+        coverage = (pixels / (h * w)) * 100
+        
+        # Use to_native helper to ensure JSON compatibility
+        response_data = {
             "success": True,
             "box": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
             "class_name": class_name,
@@ -694,19 +568,21 @@ async def segment_box(
             "coverage_percent": coverage,
             "confidence": score,
             "image_size": {"width": w, "height": h}
-        })
+        }
+
+        return JSONResponse(to_native(response_data))
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"❌ Box Value Error: {e}")
+        return JSONResponse(status_code=400, content={'error': str(e)})
     except Exception as e:
         print(f"❌ Segmentation (box) error: {e}")
-        raise HTTPException(status_code=500, detail=f"Segmentation error: {e}")
-
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 # ============================================================
 # VIDEO PROCESSING ENDPOINTS
 # ============================================================
-
 
 @app.post('/api/v1/video/upload')
 async def upload_video(file: UploadFile = File(...)):
@@ -714,7 +590,6 @@ async def upload_video(file: UploadFile = File(...)):
     try:
         print(f"\n📹 Video upload: {file.filename}")
         
-        # Validate file is video
         valid_video_formats = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm']
         file_ext = os.path.splitext(file.filename)[1].lower()
         
@@ -724,15 +599,13 @@ async def upload_video(file: UploadFile = File(...)):
                 content={'error': f'Invalid format. Supported: {valid_video_formats}'}
             )
         
-        # Save uploaded file
         video_path = f"{settings.UPLOAD_FOLDER}/{file.filename}"
         contents = await file.read()
         
         with open(video_path, 'wb') as f:
             f.write(contents)
         
-        # Get file size
-        file_size = len(contents) / (1024 * 1024)  # MB
+        file_size = len(contents) / (1024 * 1024)
         
         print(f"✅ Video uploaded: {file_size:.2f} MB")
         
@@ -750,7 +623,6 @@ async def upload_video(file: UploadFile = File(...)):
             content={'error': str(e)}
         )
 
-
 @app.post('/api/v1/video/process')
 async def process_video(
     video_path: str = Form(...),
@@ -759,34 +631,22 @@ async def process_video(
     """Process uploaded video with YOLOv8 detection"""
     try:
         if not video_path:
-            return JSONResponse(
-                status_code=400,
-                content={'error': 'video_path required'}
-            )
+            return JSONResponse(status_code=400, content={'error': 'video_path required'})
         
         if not os.path.exists(video_path):
-            return JSONResponse(
-                status_code=404,
-                content={'error': 'Video file not found'}
-            )
+            return JSONResponse(status_code=404, content={'error': 'Video file not found'})
         
         print(f"\n🎬 Processing video: {video_path}")
         
         if yolo_model is None:
-            return JSONResponse(
-                status_code=500,
-                content={'error': 'YOLOv8 model not loaded'}
-            )
+            return JSONResponse(status_code=500, content={'error': 'YOLOv8 model not loaded'})
         
-        # Generate output path
         filename = os.path.basename(video_path)
         name, ext = os.path.splitext(filename)
         output_path = f"{settings.UPLOAD_FOLDER}/{name}_detected.mp4"
         
-        # Get processor
         processor = get_video_processor(yolo_model)
         
-        # Process video
         stats = processor.process_video(
             video_path,
             output_path=output_path,
@@ -795,13 +655,14 @@ async def process_video(
         
         print(f"✅ Video processing complete")
         
-        return JSONResponse({
+        # Use to_native to clean up numpy integers in stats
+        return JSONResponse(to_native({
             'status': 'completed',
             'input_file': filename,
             'output_file': os.path.basename(output_path),
             'stats': stats,
             'download_url': f'/api/v1/video/download?file={os.path.basename(output_path)}'
-        })
+        }))
         
     except Exception as e:
         print(f"❌ Processing error: {str(e)}")
@@ -810,7 +671,6 @@ async def process_video(
             content={'error': str(e)}
         )
 
-
 @app.get('/api/v1/video/download')
 async def download_video(file: str):
     """Download processed video file"""
@@ -818,10 +678,7 @@ async def download_video(file: str):
         file_path = os.path.join(settings.UPLOAD_FOLDER, file)
         
         if not os.path.exists(file_path):
-            return JSONResponse(
-                status_code=404,
-                content={'error': 'File not found'}
-            )
+            return JSONResponse(status_code=404, content={'error': 'File not found'})
         
         print(f"\n📥 Downloading: {file}")
         
@@ -838,7 +695,6 @@ async def download_video(file: str):
             content={'error': str(e)}
         )
 
-
 @app.post('/api/v1/video/stream')
 async def stream_video_processing(
     video_path: str = Form(...),
@@ -847,10 +703,7 @@ async def stream_video_processing(
     """Stream video processing progress (for real-time updates)"""
     try:
         if yolo_model is None:
-            return JSONResponse(
-                status_code=500,
-                content={'error': 'YOLOv8 model not loaded'}
-            )
+            return JSONResponse(status_code=500, content={'error': 'YOLOv8 model not loaded'})
         
         processor = get_video_processor(yolo_model)
         
@@ -865,11 +718,11 @@ async def stream_video_processing(
             callback=on_frame
         )
         
-        return JSONResponse({
+        return JSONResponse(to_native({
             'status': 'completed',
             'total_frames_processed': len(progress_data),
-            'frames': progress_data[-10:]  # Last 10 frames
-        })
+            'frames': progress_data[-10:]
+        }))
         
     except Exception as e:
         print(f"❌ Streaming error: {str(e)}")
@@ -877,12 +730,6 @@ async def stream_video_processing(
             status_code=500,
             content={'error': str(e)}
         )
-
-
-# ============================================================
-# ERROR HANDLERS
-# ============================================================
-
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
@@ -892,12 +739,6 @@ async def global_exception_handler(request, exc):
         status_code=500,
         content={'error': str(exc)}
     )
-
-
-# ============================================================
-# SERVER STARTUP
-# ============================================================
-
 
 if __name__ == '__main__':
     import uvicorn

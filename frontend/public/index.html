@@ -13,7 +13,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
@@ -226,6 +226,43 @@
             margin: 8px 0;
             font-size: 14px;
         }
+
+        /* NEW STYLES FOR DETECTION LAYOUT */
+        .det-layout {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        .det-main { flex: 2; }
+        .det-sidebar { 
+            flex: 1; 
+            background: white;
+            border-left: 4px solid #667eea;
+            max-width: 350px;
+        }
+        .asset-preview {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 6px;
+            text-align: center;
+            border: 1px solid #eee;
+        }
+        .asset-preview img {
+            max-width: 100%;
+            height: 100px;
+            object-fit: contain;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+        }
+        .stat-box {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #f0f4ff;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -236,7 +273,6 @@
             <div id="statusBar" class="status-bar">⏳ Checking...</div>
         </header>
 
-
         <div class="tabs">
             <button class="tab-btn active" data-tab="detection">📸 Detection</button>
             <button class="tab-btn" data-tab="chat">💬 Chat</button>
@@ -244,119 +280,112 @@
             <button class="tab-btn" data-tab="segmentation">✨ Segmentation</button>
         </div>
 
-
-        <!-- DETECTION TAB -->
         <div id="detection" class="tab-content active">
-            <div class="card">
-                <h2>📸 Object Detection</h2>
-                <p>Upload an image to detect objects</p>
-                
-                <input type="file" id="imageInput" accept="image/*" style="display:none;">
-                <button class="btn btn-primary" onclick="document.getElementById('imageInput').click()">📁 Select Image</button>
+            <div class="det-layout">
+                <div class="card det-main">
+                    <h2>📸 Object Detection</h2>
+                    <p>Upload an image to detect objects. <strong>Click on a box to segment it!</strong></p>
+                    
+                    <input type="file" id="imageInput" accept="image/*" style="display:none;">
+                    <button class="btn btn-primary" onclick="document.getElementById('imageInput').click()">📁 Select Image</button>
 
+                    <button id="detectBtn" class="btn btn-success hidden" onclick="detectImage()">🚀 Detect Objects</button>
 
-                <div id="imagePreview" class="preview hidden">
-                    <img id="previewImg" src="" alt="Preview">
+                    <div id="errorMsg" class="error hidden"></div>
+                    <div id="loadingMsg" class="loading hidden">⏳ Processing...</div>
+
+                    <div id="detCanvasContainer" class="preview hidden">
+                        <canvas id="detCanvas" style="max-width:100%; border:1px solid #ccc; border-radius:8px; cursor:pointer;"></canvas>
+                        <p style="font-size:12px; color:#666; margin-top:5px;">💡 Tip: Click any green box to generate SAM mask</p>
+                    </div>
+
+                    <div id="results" class="hidden">
+                        <h3 style="margin: 15px 0;">📊 Overview</h3>
+                        <p>File: <strong id="fileName"></strong> | Objects: <strong id="objCount">0</strong></p>
+                    </div>
                 </div>
 
+                <div id="samPanel" class="card det-sidebar hidden">
+                    <h3>✨ Segmented Object</h3>
+                    <div id="samLoading" class="loading hidden">Running SAM...</div>
+                    
+                    <div id="samContent" class="hidden">
+                        <div class="stat-box">
+                            <strong>Class:</strong> <span id="samClass"></span>
+                        </div>
+                        <div class="stat-box">
+                            <strong>Area:</strong> <span id="samArea"></span>
+                        </div>
+                        <div class="stat-box">
+                            <strong>Conf:</strong> <span id="samConf"></span>
+                        </div>
 
-                <button id="detectBtn" class="btn btn-success hidden" onclick="detectImage()">🚀 Detect Objects</button>
+                        <div class="asset-preview">
+                            <p><strong>Background Removed</strong></p>
+                            <img id="samNoBg" src="" alt="No BG" style="background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%); background-size: 20px 20px;">
+                            <a id="dlNoBg" class="btn btn-primary" style="padding:5px; font-size:12px;" download>Download PNG</a>
+                        </div>
 
+                        <div class="asset-preview">
+                            <p><strong>Clean Crop</strong></p>
+                            <img id="samCrop" src="" alt="Crop">
+                            <a id="dlCrop" class="btn btn-primary" style="padding:5px; font-size:12px;" download>Download JPG</a>
+                        </div>
 
-                <div id="errorMsg" class="error hidden"></div>
-                <div id="loadingMsg" class="loading hidden">⏳ Processing...</div>
-
-
-                <div id="results" class="hidden">
-                    <h3 style="margin: 15px 0;">📊 Results</h3>
-                    <p>File: <strong id="fileName"></strong> | Objects: <strong id="objCount">0</strong></p>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Object</th>
-                                <th>Confidence</th>
-                                <th>Position</th>
-                            </tr>
-                        </thead>
-                        <tbody id="resultsTable"></tbody>
-                    </table>
+                        <div class="asset-preview">
+                            <p><strong>Precise Mask</strong></p>
+                            <img id="samMask" src="" alt="Mask">
+                            <a id="dlMask" class="btn btn-primary" style="padding:5px; font-size:12px;" download>Download Mask</a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-
-        <!-- CHAT TAB -->
         <div id="chat" class="tab-content hidden">
             <div class="card">
                 <h2>💬 Image Chat</h2>
                 <p>Ask questions about your image</p>
-                
                 <input type="file" id="chatInput" accept="image/*" style="display:none;">
                 <button class="btn btn-primary" onclick="document.getElementById('chatInput').click()">📁 Select Image</button>
-
-
                 <div id="chatPreview" class="preview hidden">
                     <img id="chatImg" src="" alt="Preview">
                 </div>
-
-
                 <div id="chatUI" class="hidden">
                     <div class="chat-box" id="chatBox"></div>
-
-
                     <div class="form-group">
                         <label>Message:</label>
                         <textarea id="question" class="form-control" placeholder="Ask a question..." style="height:80px;"></textarea>
                     </div>
-
-
                     <button class="btn btn-success" onclick="sendChat()">💬 Send</button>
                     <button class="btn btn-primary" onclick="describeImg()" style="margin-top:10px;">📝 Describe</button>
                     <button class="btn btn-primary" onclick="resetChat()" style="margin-top:10px;">🔄 Reset</button>
-
-
                     <div id="chatLoading" class="loading hidden">AI thinking...</div>
                 </div>
             </div>
         </div>
 
-
-        <!-- VIDEO TAB -->
         <div id="video" class="tab-content hidden">
             <div class="card">
                 <h2>🎬 Video Processing</h2>
                 <p>Process videos frame-by-frame</p>
-
-
                 <div class="form-group">
                     <label>Threshold: <span id="threshDisplay">0.50</span></label>
                     <input type="range" id="threshold" min="0" max="1" step="0.05" value="0.5" onchange="updateThresh()">
                 </div>
-
-
                 <input type="file" id="videoInput" accept="video/*" style="display:none;">
                 <button class="btn btn-primary" onclick="document.getElementById('videoInput').click()">📁 Select Video</button>
-
-
                 <div id="videoInfo" class="hidden" style="background:#f0f0f0;padding:10px;border-radius:6px;margin:15px 0;">
                     <p>📹 <strong id="videoName"></strong> (<span id="videoSize"></span> MB)</p>
                 </div>
-
-
                 <button id="processBtn" class="btn btn-success hidden" onclick="processVideo()">🚀 Process</button>
-
-
                 <div id="progress" class="hidden" style="margin:15px 0;">
                     <div class="progress-bar">
                         <div class="progress-fill" id="progressBar"></div>
                     </div>
                     <p style="text-align:center;font-size:12px;color:#666;"><span id="progressPct">0</span>%</p>
                 </div>
-
-
                 <div id="videoError" class="error hidden"></div>
-
-
                 <div id="stats" class="hidden">
                     <h3 style="margin:15px 0;">📊 Results</h3>
                     <table>
@@ -370,36 +399,28 @@
             </div>
         </div>
 
-
-        <!-- SEGMENTATION TAB -->
         <div id="segmentation" class="tab-content hidden">
             <div class="card">
                 <h2>✨ AI Image Segmentation (SAM)</h2>
                 <p>Click to segment objects in your image</p>
-                
                 <input type="file" id="segInput" accept="image/*" style="display:none;">
                 <button class="btn btn-primary" onclick="document.getElementById('segInput').click()">📁 Select Image</button>
-                
                 <div id="segPreview" class="preview hidden">
                     <canvas id="segCanvas" style="max-width:100%; border: 1px solid #ccc; border-radius: 8px; cursor: crosshair;"></canvas>
                     <p id="segStatus" style="margin-top: 10px; color: #666;">Ready for clicks</p>
                 </div>
-                
                 <div id="segControls" class="seg-controls hidden">
                     <div class="seg-info">
                         <p><strong>Left Click:</strong> Include object (green indicator)</p>
                         <p><strong>Right Click:</strong> Exclude area (red indicator)</p>
                         <p><strong>Prompts:</strong> <span id="promptCount">0</span></p>
                     </div>
-                    
                     <button class="btn btn-success" onclick="runSegmentation()">🎯 Segment</button>
                     <button class="btn btn-primary" onclick="clearSegPoints()" style="margin-top: 10px;">🗑️ Clear Clicks</button>
                     <button class="btn btn-primary" onclick="resetSegmentation()" style="margin-top: 10px;">↻ Reset All</button>
                 </div>
-                
                 <div id="segError" class="error hidden"></div>
                 <div id="segLoading" class="loading hidden">⏳ Segmenting...</div>
-                
                 <div id="segResults" class="seg-results hidden">
                     <h3>📊 Results</h3>
                     <div class="seg-stats">
@@ -407,15 +428,12 @@
                         <p>Pixels: <strong id="segPixels">0</strong></p>
                         <p>Coverage: <strong id="segCoverage">0%</strong></p>
                     </div>
-                    
                     <button class="btn btn-success" onclick="downloadSegViz()" style="margin-bottom: 10px;">📥 Download Visualization</button>
                     <button class="btn btn-success" onclick="downloadSegMask()">📥 Download Mask</button>
                 </div>
             </div>
         </div>
     </div>
-
-
     <script src="../js/app.js"></script>
 </body>
 </html>
