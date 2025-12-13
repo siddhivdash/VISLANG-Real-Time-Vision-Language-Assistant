@@ -65,6 +65,9 @@ test-results/
 *.tmp
 *.bak
 *.swp
+*.pth
+*.pt
+
 
 
 backend/models/sam/sam_vit_b_01ec64.pth
