@@ -1,9 +1,16 @@
-// VisLang Frontend - Complete & Working
+// VisLang Frontend - FIXED Segmentation
 const API_URL = 'http://localhost:8000';
 
 let currentImageFile = null;
 let currentChatFile = null;
 let videoOutputFile = null;
+
+// Segmentation variables
+let segmentationImage = null;
+let segmentationCanvas = null;
+let segmentationCtx = null;
+let currentSegPrompts = [];
+let lastSegmentationResult = null;
 
 // ============ INIT ============
 window.addEventListener('load', () => {
@@ -12,6 +19,7 @@ window.addEventListener('load', () => {
     setupDetection();
     setupChat();
     setupVideo();
+    setupSegmentation();
     console.log('✅ VisLang loaded');
 });
 
@@ -326,4 +334,344 @@ function downloadVideo() {
     }
 }
 
-console.log('✅ VisLang Frontend Ready!');
+// ============================================================
+// SEGMENTATION (SAM) - MANUAL POINTS + AUTOMATIC
+// ============================================================
+
+function setupSegmentation() {
+    const segInput = document.getElementById('segInput');
+    segInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const img = new Image();
+            img.onload = () => {
+                segmentationCanvas = document.getElementById('segCanvas');
+                segmentationCtx = segmentationCanvas.getContext('2d');
+                
+                segmentationCanvas.width = img.width;
+                segmentationCanvas.height = img.height;
+                segmentationCtx.drawImage(img, 0, 0);
+                
+                segmentationImage = img;
+                currentSegPrompts = [];
+                lastSegmentationResult = null;
+                
+                document.getElementById('segPreview').classList.remove('hidden');
+                document.getElementById('segControls').classList.remove('hidden');
+                document.getElementById('segResults').classList.add('hidden');
+                document.getElementById('promptCount').textContent = '0';
+                document.getElementById('segStatus').textContent = '✅ Ready for clicks';
+                
+                addSegmentationClickHandlers();
+                
+                console.log(`✅ Image loaded: ${img.width}x${img.height}`);
+            };
+            img.src = evt.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+
+function addSegmentationClickHandlers() {
+    segmentationCanvas.addEventListener('click', (e) => {
+        const rect = segmentationCanvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * (segmentationCanvas.width / rect.width);
+        const y = (e.clientY - rect.top) * (segmentationCanvas.height / rect.height);
+        addSegmentationPrompt(x, y, 1); // Include
+    });
+    
+    segmentationCanvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const rect = segmentationCanvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * (segmentationCanvas.width / rect.width);
+        const y = (e.clientY - rect.top) * (segmentationCanvas.height / rect.height);
+        addSegmentationPrompt(x, y, 0); // Exclude
+    });
+}
+
+
+function addSegmentationPrompt(x, y, label) {
+    currentSegPrompts.push([x, y, label]);
+    
+    const ctx = segmentationCtx;
+    const radius = 8;
+    
+    if (label === 1) {
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.5)'; // Green for include
+    } else {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // Red for exclude
+    }
+    
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    ctx.strokeStyle = label === 1 ? 'green' : 'red';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    document.getElementById('promptCount').textContent = currentSegPrompts.length;
+    document.getElementById('segStatus').textContent = `Added ${currentSegPrompts.length} prompt(s)`;
+}
+
+
+async function runSegmentation() {
+    if (!segmentationImage || currentSegPrompts.length === 0) {
+        alert('Select image and add at least one click');
+        return;
+    }
+    
+    try {
+        document.getElementById('segLoading').classList.remove('hidden');
+        document.getElementById('segError').classList.add('hidden');
+        document.getElementById('segStatus').textContent = '⏳ Processing...';
+        
+        // Convert canvas to blob
+        segmentationCanvas.toBlob(async (blob) => {
+            try {
+                const formData = new FormData();
+                formData.append('file', blob, 'image.png');
+                
+                // Create arrays from points
+                const points = currentSegPrompts.map(p => [p[0], p[1]]);
+                const labels = currentSegPrompts.map(p => p[2]);
+                
+                // Convert to JSON strings
+                const pointsJson = JSON.stringify(points);
+                const labelsJson = JSON.stringify(labels);
+                
+                // Log for debugging
+                console.log(`🎯 Sending segmentation request:`);
+                console.log(`   Points: ${pointsJson}`);
+                console.log(`   Labels: ${labelsJson}`);
+                console.log(`   Points count: ${points.length}`);
+                console.log(`   Labels count: ${labels.length}`);
+                
+                // Append as form fields
+                formData.append('points', pointsJson);
+                formData.append('labels', labelsJson);
+                
+                // Send request
+                const response = await fetch(`${API_URL}/api/v1/segment/point`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                console.log(`Response status: ${response.status}`);
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Segmentation failed');
+                }
+                
+                const result = await response.json();
+                lastSegmentationResult = result;
+                
+                console.log('✅ Segmentation complete', result);
+                
+                document.getElementById('segConfidence').textContent = (result.confidence * 100).toFixed(2) + '%';
+                document.getElementById('segPixels').textContent = result.pixels;
+                document.getElementById('segCoverage').textContent = result.coverage_percent.toFixed(2) + '%';
+                document.getElementById('segResults').classList.remove('hidden');
+                document.getElementById('segStatus').textContent = '✅ Segmentation complete!';
+                
+                // Show visualization
+                const vizImg = new Image();
+                vizImg.onload = () => {
+                    segmentationCtx.drawImage(vizImg, 0, 0);
+                };
+                vizImg.onerror = () => {
+                    console.error('Failed to load visualization image');
+                };
+                vizImg.src = `${API_URL}${result.visualization}`;
+                
+            } catch (e) {
+                console.error('Error in blob callback:', e);
+                document.getElementById('segError').textContent = '❌ ' + e.message;
+                document.getElementById('segError').classList.remove('hidden');
+                document.getElementById('segStatus').textContent = '❌ Failed';
+            } finally {
+                document.getElementById('segLoading').classList.add('hidden');
+            }
+        }, 'image/png');
+        
+    } catch (e) {
+        console.error('Error:', e);
+        document.getElementById('segError').textContent = '❌ ' + e.message;
+        document.getElementById('segError').classList.remove('hidden');
+        document.getElementById('segLoading').classList.add('hidden');
+        document.getElementById('segStatus').textContent = '❌ Failed';
+    }
+}
+
+
+function clearSegPoints() {
+    if (!segmentationImage) return;
+    
+    segmentationCtx.drawImage(segmentationImage, 0, 0);
+    currentSegPrompts = [];
+    document.getElementById('promptCount').textContent = '0';
+    document.getElementById('segStatus').textContent = '✅ Clicks cleared';
+}
+
+
+function resetSegmentation() {
+    document.getElementById('segInput').value = '';
+    segmentationImage = null;
+    currentSegPrompts = [];
+    lastSegmentationResult = null;
+    
+    document.getElementById('segPreview').classList.add('hidden');
+    document.getElementById('segControls').classList.add('hidden');
+    document.getElementById('segResults').classList.add('hidden');
+    document.getElementById('segError').classList.add('hidden');
+    document.getElementById('segStatus').textContent = 'Ready for clicks';
+    document.getElementById('promptCount').textContent = '0';
+    
+    console.log('🔄 Segmentation reset');
+}
+
+
+function downloadSegViz() {
+    if (lastSegmentationResult && lastSegmentationResult.visualization) {
+        const link = document.createElement('a');
+        link.href = `${API_URL}${lastSegmentationResult.visualization}`;
+        link.download = 'segmentation_viz.png';
+        link.click();
+    }
+}
+
+
+function downloadSegMask() {
+    if (lastSegmentationResult && lastSegmentationResult.mask) {
+        const link = document.createElement('a');
+        link.href = `${API_URL}${lastSegmentationResult.mask}`;
+        link.download = 'segmentation_mask.png';
+        link.click();
+    }
+}
+
+
+// ============================================================
+// AUTOMATIC SEGMENTATION
+// ============================================================
+
+let autoSegmentationResult = null;
+let autoSegmentFile = null;
+
+// Handle file selection for auto segmentation
+document.getElementById('autoSegInput').addEventListener('change', function(e) {
+    autoSegmentFile = e.target.files[0];
+    if (autoSegmentFile) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            // Show preview
+            document.getElementById('autoSegImage').src = event.target.result;
+            document.getElementById('autoSegPreview').classList.remove('hidden');
+            document.getElementById('autoSegControls').classList.remove('hidden');
+            document.getElementById('autoSegResults').classList.add('hidden');
+            document.getElementById('autoSegError').classList.add('hidden');
+            
+            console.log('Auto segmentation image loaded:', autoSegmentFile.name);
+        };
+        reader.readAsDataURL(autoSegmentFile);
+    }
+});
+
+async function runAutoSegmentation() {
+    if (!autoSegmentFile) {
+        alert('Please select an image first');
+        return;
+    }
+    
+    // Show loading
+    document.getElementById('autoSegLoading').classList.remove('hidden');
+    document.getElementById('autoSegError').classList.add('hidden');
+    document.getElementById('autoSegResults').classList.add('hidden');
+    
+    try {
+        const formData = new FormData();
+        formData.append('file', autoSegmentFile);
+        
+        console.log('🤖 Sending automatic segmentation request...');
+        
+        const response = await fetch(`${API_URL}/api/v1/segment/automatic`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('✅ Segmentation result:', data);
+        
+        // Store result
+        autoSegmentationResult = data;
+        
+        // Update statistics
+        document.getElementById('autoObjectCount').textContent = data.objects_found;
+        document.getElementById('autoSegPixels').textContent = data.pixels.toLocaleString();
+        document.getElementById('autoSegCoverage').textContent = data.coverage_percent.toFixed(2);
+        document.getElementById('autoSegConfidence').textContent = (data.average_confidence * 100).toFixed(2);
+        
+        // Display visualization
+        const vizImg = document.getElementById('autoSegVizImage');
+        vizImg.src = `${API_URL}${data.visualization}`;
+        
+        // Show results
+        document.getElementById('autoSegResults').classList.remove('hidden');
+        document.getElementById('autoSegLoading').classList.add('hidden');
+        
+    } catch (error) {
+        console.error('❌ Error:', error);
+        document.getElementById('autoSegError').textContent = 'Error: ' + error.message;
+        document.getElementById('autoSegError').classList.remove('hidden');
+        document.getElementById('autoSegLoading').classList.add('hidden');
+    }
+}
+
+function downloadAutoSegViz() {
+    if (!autoSegmentationResult) {
+        alert('No segmentation result to download');
+        return;
+    }
+    console.log('📥 Downloading visualization...');
+    window.location.href = `${API_URL}${autoSegmentationResult.visualization}`;
+}
+
+function downloadAutoSegMask() {
+    if (!autoSegmentationResult) {
+        alert('No segmentation result to download');
+        return;
+    }
+    console.log('📥 Downloading mask...');
+    window.location.href = `${API_URL}${autoSegmentationResult.mask}`;
+}
+
+function resetAutoSegmentation() {
+    // Reset all
+    document.getElementById('autoSegInput').value = '';
+    document.getElementById('autoSegPreview').classList.add('hidden');
+    document.getElementById('autoSegControls').classList.add('hidden');
+    document.getElementById('autoSegResults').classList.add('hidden');
+    document.getElementById('autoSegError').classList.add('hidden');
+    document.getElementById('autoSegLoading').classList.add('hidden');
+    
+    autoSegmentFile = null;
+    autoSegmentationResult = null;
+    
+    console.log('🔄 Auto segmentation reset');
+}
+
+// ============================================================
+// END SEGMENTATION SECTION
+// ============================================================
+
+
+console.log('✅ VisLang Frontend Ready!');  

@@ -66,4 +66,9 @@ test-results/
 *.bak
 *.swp
 
-uploads/
+
+backend/models/sam/sam_vit_b_01ec64.pth
+yolov8n.pt
+backend/outputs/
+backend/uploads/*.mp4
+__pycache__/

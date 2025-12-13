@@ -70,3 +70,4 @@ pytest-asyncio==0.21.1
 # Tell me which and I will update this file again.
 opencv-python>=4.8.0
 python-multipart>=0.0.6
+segment-anything==1.0
