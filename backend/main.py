@@ -21,6 +21,8 @@ import cv2
 from fastapi.staticfiles import StaticFiles
 import time
 import traceback
+from models.video_summarizer import get_video_summarizer
+import asyncio
 
 load_dotenv()
 
@@ -29,17 +31,13 @@ load_dotenv()
 # ============================================================
 def to_native(obj):
     """
-    Recursively convert NumPy types to Python native types
-    to avoid 'int32 is not JSON serializable' errors.
+    Recursively convert NumPy types to Python native types.
+    Using .item() handles all numpy scalars (int32, float32, etc.) safely.
     """
-    if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
-        np.int16, np.int32, np.int64, np.uint8,
-        np.uint16, np.uint32, np.uint64)):
-        return int(obj)
-    elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
-        return float(obj)
-    elif isinstance(obj, (np.ndarray,)):
+    if hasattr(obj, 'tolist'):  # Handles numpy arrays
         return obj.tolist()
+    elif hasattr(obj, 'item'):  # Handles numpy scalars
+        return obj.item()
     elif isinstance(obj, dict):
         return {k: to_native(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -288,14 +286,16 @@ async def chat_with_image(
         print(f"\n💬 Chat request: {question}")
         llava = get_llava_engine()
         image_bytes = await file.read()
-        image = Image.open(io.BytesIO(image_bytes))
-        response = llava.chat(image, question)
+        
+        # Pass bytes directly to the engine (it handles opening/RGB conversion)
+        response = llava.chat(image_bytes, question)
+        
         print(f"✅ Chat response generated")
         return JSONResponse({
             'question': question,
             'answer': response,
             'filename': file.filename,
-            'model': 'LLaVA (Ollama CPU)',
+            'model': llava.model_name, # Dynamic model name check
             'device': 'CPU'
         })
     except Exception as e:
@@ -730,6 +730,56 @@ async def stream_video_processing(
             status_code=500,
             content={'error': str(e)}
         )
+    
+
+# ============================================================
+# VIDEO summarizer ENDPOINTS
+# ============================================================
+
+@app.post('/api/v1/video/summarize')
+async def summarize_video(video_path: str = Form(...)):
+    """Generate a text summary of the video content"""
+    try:
+        # 1. Validate file existence
+        if not video_path or not os.path.exists(video_path):
+            return JSONResponse(
+                status_code=404, 
+                content={'error': f'Video file not found at: {video_path}'}
+            )
+        
+        print(f"\n📝 Video Summary Request: {video_path}")
+        
+        # 2. Get the summarizer engine
+        summarizer = get_video_summarizer()
+        
+        # 3. Run CPU-intensive task in a separate thread
+        # This is crucial so the API doesn't "freeze" while processing images
+        summary = await asyncio.to_thread(summarizer.summarize, video_path)
+        
+        print(f"✅ Summary generated successfully")
+        
+        # 4. Return result (using to_native to prevent any int32 errors)
+        return JSONResponse(to_native({
+            'status': 'success',
+            'summary': summary,
+            'video_file': os.path.basename(video_path)
+        }))
+        
+    except ValueError as ve:
+        # Catch known errors (like "0 frames extracted") as 400 Bad Request
+        print(f"⚠️ Video Validation Error: {ve}")
+        return JSONResponse(status_code=400, content={'error': str(ve)})
+        
+    except Exception as e:
+        # Catch unexpected crashes as 500 Internal Error
+        print(f"❌ Critical Summary Error: {e}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={'error': f"Processing failed: {str(e)}"})
+        
+    except Exception as e:
+        print(f"❌ Summary error: {str(e)}")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):

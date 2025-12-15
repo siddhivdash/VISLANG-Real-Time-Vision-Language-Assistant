@@ -1,9 +1,11 @@
 // VisLang Frontend - Full Feature Set
 const API_URL = 'http://localhost:8000';
 
+// Global State
 let currentImageFile = null;
 let currentChatFile = null;
 let videoOutputFile = null;
+let currentVideoPath = null; // NEW: Tracks the raw video path for summarization
 
 // Segmentation variables
 let segmentationImage = null;
@@ -12,7 +14,7 @@ let segmentationCtx = null;
 let currentSegPrompts = [];
 let lastSegmentationResult = null;
 
-// Detection variables (NEW)
+// Detection variables
 let detImage = new Image();
 let detDetections = [];
 let detScale = 1;
@@ -80,9 +82,9 @@ function setupDetection() {
                 // Show/Hide Elements
                 document.getElementById('detCanvasContainer').classList.remove('hidden');
                 document.getElementById('detectBtn').classList.remove('hidden');
-                document.getElementById('results').classList.add('hidden'); // Hide old table if present
+                document.getElementById('results').classList.add('hidden');
                 document.getElementById('errorMsg').classList.add('hidden');
-                document.getElementById('samPanel').classList.add('hidden'); // Hide SAM panel until click
+                document.getElementById('samPanel').classList.add('hidden');
                 
                 detDetections = []; // Reset detections
             };
@@ -253,7 +255,7 @@ function showError(msg) {
     err.classList.remove('hidden');
 }
 
-// ============ CHAT (Untouched) ============
+// ============ CHAT ============
 function setupChat() {
     const inp = document.getElementById('chatInput');
     inp.addEventListener('change', (e) => {
@@ -336,7 +338,7 @@ function resetChat() {
     addMsg('assistant', 'Chat cleared!');
 }
 
-// ============ VIDEO (Untouched) ============
+// ============ VIDEO & SUMMARIZATION ============
 function setupVideo() {
     document.getElementById('videoInput').addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -346,6 +348,10 @@ function setupVideo() {
         document.getElementById('videoInfo').classList.remove('hidden');
         document.getElementById('processBtn').classList.remove('hidden');
         document.getElementById('stats').classList.add('hidden');
+        
+        // Reset summary UI when new video selected
+        document.getElementById('summaryResult').classList.add('hidden');
+        currentVideoPath = null;
     });
 }
 
@@ -369,15 +375,18 @@ async function processVideo() {
         document.getElementById('progress').classList.remove('hidden');
         document.getElementById('videoError').classList.add('hidden');
 
-        // Upload
+        // 1. Upload
         setProgress(10);
         const uploadFd = new FormData();
         uploadFd.append('file', file);
         const uploadR = await fetch(`${API_URL}/api/v1/video/upload`, { method: 'POST', body: uploadFd });
         if (!uploadR.ok) throw new Error('Upload failed');
         const uploadData = await uploadR.json();
+        
+        // NEW: Save path for summarizer
+        currentVideoPath = uploadData.path; 
 
-        // Process
+        // 2. Process (Detection)
         setProgress(40);
         const procFd = new FormData();
         procFd.append('video_path', uploadData.path);
@@ -409,6 +418,47 @@ async function processVideo() {
     }
 }
 
+// NEW: Video Summarization Function
+async function summarizeVideo() {
+    if (!currentVideoPath) {
+        alert("Please upload and process a video first.");
+        return;
+    }
+
+    const btn = document.getElementById('summarizeBtn');
+    const loading = document.getElementById('summaryLoading');
+    const result = document.getElementById('summaryResult');
+    const textDiv = document.getElementById('summaryText');
+
+    btn.disabled = true;
+    loading.classList.remove('hidden');
+    result.classList.add('hidden');
+
+    try {
+        const fd = new FormData();
+        fd.append('video_path', currentVideoPath);
+
+        const r = await fetch(`${API_URL}/api/v1/video/summarize`, {
+            method: 'POST',
+            body: fd
+        });
+
+        const data = await r.json();
+
+        if (!r.ok) throw new Error(data.error || 'Summarization failed');
+
+        textDiv.innerText = data.summary;
+        result.classList.remove('hidden');
+
+    } catch (e) {
+        console.error(e);
+        alert("Failed to summarize: " + e.message);
+    } finally {
+        btn.disabled = false;
+        loading.classList.add('hidden');
+    }
+}
+
 function setProgress(pct) {
     document.getElementById('progressBar').style.width = pct + '%';
     document.getElementById('progressPct').textContent = pct;
@@ -422,7 +472,7 @@ function downloadVideo() {
     }
 }
 
-// ============ MANUAL SEGMENTATION (Untouched) ============
+// ============ MANUAL SEGMENTATION ============
 function setupSegmentation() {
     const segInput = document.getElementById('segInput');
     segInput.addEventListener('change', (e) => {

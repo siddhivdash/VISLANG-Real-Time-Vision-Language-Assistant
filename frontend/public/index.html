@@ -366,6 +366,21 @@
         </div>
 
         <div id="video" class="tab-content hidden">
+                    <div class="card" style="margin-top: 20px; border-left: 4px solid #F59E0B;">
+    <h2>🧠 Video Understanding</h2>
+    <p>Generate a text summary of events in the video.</p>
+    
+    <button id="summarizeBtn" class="btn" style="background: #F59E0B; color: white;" onclick="summarizeVideo()">
+        <i class="fas fa-file-alt"></i> Generate Summary
+    </button>
+    
+    <div id="summaryLoading" class="loading hidden">AI is watching the video...</div>
+    
+    <div id="summaryResult" class="hidden" style="margin-top: 15px;">
+        <h3>📝 AI Summary:</h3>
+        <div id="summaryText" style="padding: 15px; background: #FFF8E1; border-radius: 6px; line-height: 1.6;"></div>
+    </div>
+</div>
             <div class="card">
                 <h2>🎬 Video Processing</h2>
                 <p>Process videos frame-by-frame</p>
@@ -398,6 +413,7 @@
                 </div>
             </div>
         </div>
+
 
         <div id="segmentation" class="tab-content hidden">
             <div class="card">
