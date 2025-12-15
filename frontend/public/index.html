@@ -2,454 +2,494 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VisLang - Vision Language Assistant</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VisLang - AI Reality</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-        .header h1 { font-size: 32px; margin-bottom: 10px; }
-        .status-bar {
-            display: inline-block;
-            padding: 8px 16px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 20px;
-            font-size: 12px;
-            margin-top: 10px;
-        }
-        .tabs {
-            display: flex;
-            background: #f5f5f5;
-            border-bottom: 2px solid #e0e0e0;
-            flex-wrap: wrap;
-        }
-        .tab-btn {
-            flex: 1;
-            min-width: 120px;
-            padding: 15px;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            font-weight: 500;
-            color: #666;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s;
-            font-size: 14px;
-        }
-        .tab-btn.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-        }
-        .tab-content {
-            padding: 30px;
-            display: none !important;
-            min-height: 400px;
-        }
-        .tab-content.active { 
-            display: block !important; 
-        }
-        .card {
-            background: #fafafa;
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-        }
-        .card h2 { color: #333; margin-bottom: 10px; font-size: 20px; }
-        .card p { color: #666; margin-bottom: 20px; }
-        .btn {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-            font-size: 14px;
-        }
-        .btn-primary {
-            background: #667eea;
-            color: white;
-            width: 100%;
-            margin-bottom: 15px;
-        }
-        .btn-primary:hover {
-            background: #5568d3;
-            transform: translateY(-2px);
-        }
-        .btn-success {
-            background: #4CAF50;
-            color: white;
-            width: 100%;
-            margin-top: 10px;
-        }
-        .btn-success:hover { background: #45a049; }
-        .btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        .preview { margin: 20px 0; text-align: center; }
-        .preview img { max-width: 100%; max-height: 300px; border-radius: 8px; }
-        .preview canvas { max-width: 100%; border: 1px solid #ccc; border-radius: 8px; cursor: crosshair; }
-        .hidden { display: none !important; }
-        .error {
-            background: #ffebee;
-            color: #c62828;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            border-left: 4px solid #c62828;
-        }
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #667eea;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-        table th, table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        table th {
-            background: #667eea;
-            color: white;
-        }
-        .chat-box {
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            height: 300px;
-            overflow-y: auto;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
-        .chat-message {
-            margin-bottom: 12px;
-            padding: 10px;
-            border-radius: 6px;
-        }
-        .chat-message.user {
-            background: #e3f2fd;
-            margin-left: 20px;
-        }
-        .chat-message.assistant {
-            background: #f5f5f5;
-            margin-right: 20px;
-        }
-        .form-group { margin-bottom: 15px; }
-        .form-control {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            font-family: inherit;
-        }
-        .form-control:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-        input[type="range"] {
-            width: 100%;
-            margin-bottom: 10px;
-        }
-        .progress-bar {
-            width: 100%;
-            height: 8px;
-            background: #e0e0e0;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-bottom: 10px;
-        }
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            width: 0%;
-            transition: width 0.3s;
-        }
-        label { display: block; margin-bottom: 8px; font-weight: 500; }
-        .seg-controls {
-            margin: 15px 0;
-            padding: 15px;
-            background: #f0f0f0;
-            border-radius: 8px;
-        }
-        .seg-info {
-            padding: 10px;
-            background: white;
-            border-radius: 6px;
-            margin-bottom: 10px;
-            border-left: 3px solid #667eea;
-        }
-        .seg-info p {
-            margin: 5px 0;
-            font-size: 14px;
-        }
-        .seg-results {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f0f4ff;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-        .seg-results h3 {
-            color: #667eea;
-            margin-bottom: 15px;
-        }
-        .seg-stats {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-        }
-        .seg-stats p {
-            margin: 8px 0;
-            font-size: 14px;
+        body { 
+            margin: 0; 
+            overflow: hidden; /* Prevent scroll on desktop */
+            background-color: #020202; 
+            font-family: 'Rajdhani', sans-serif; 
         }
 
-        /* NEW STYLES FOR DETECTION LAYOUT */
-        .det-layout {
-            display: flex;
-            gap: 20px;
-            align-items: flex-start;
+        /* 3D Canvas Background */
+        #canvas-container { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            z-index: 1; 
+            background: radial-gradient(circle at center, #0a101f 0%, #000000 100%);
         }
-        .det-main { flex: 2; }
-        .det-sidebar { 
-            flex: 1; 
-            background: white;
-            border-left: 4px solid #667eea;
-            max-width: 350px;
-        }
-        .asset-preview {
-            margin-top: 15px;
-            padding: 10px;
-            background: #f9f9f9;
-            border-radius: 6px;
+
+        /* Hidden Video Input */
+        #input-video { display: none; }
+
+        /* --- CENTER OVERLAY (Title & Button) --- */
+        .center-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
             text-align: center;
-            border: 1px solid #eee;
+            width: 100%;
+            pointer-events: none; /* Let clicks pass */
         }
-        .asset-preview img {
-            max-width: 100%;
-            height: 100px;
-            object-fit: contain;
-            margin: 10px 0;
-            border: 1px solid #ddd;
+
+        h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 6rem; /* Slightly smaller to fit layout */
+            margin: 0;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 12px;
+            text-shadow: 0 0 20px #00ffff, 0 0 50px #0088ff;
+            animation: glitch-glow 4s infinite alternate;
         }
-        .stat-box {
+
+        h2 {
+            font-size: 1.4rem;
+            color: #dcdcdc;
+            margin-top: 10px;
+            letter-spacing: 5px;
+            font-weight: 500;
+        }
+
+        .cta-container {
+            margin-top: 40px;
+            pointer-events: auto;
+        }
+
+        .btn-launch {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(0, 255, 255, 0.5);
+            color: #00ffff;
+            padding: 16px 55px;
+            font-size: 1.2rem;
+            font-family: 'Orbitron', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            border-radius: 50px;
+            display: inline-block;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+        }
+
+        .btn-launch:hover {
+            background: #00ffff;
+            color: #000;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+            transform: scale(1.05);
+        }
+
+        /* --- FOUR CORNER CARDS --- */
+        .corner-card {
+            position: absolute;
+            z-index: 10;
+            background: rgba(0, 10, 20, 0.7); /* Darker for readability */
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            padding: 20px;
+            width: 300px;
+            border-radius: 12px;
+            pointer-events: auto;
+            transition: transform 0.3s, border-color 0.3s;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .corner-card:hover {
+            border-color: #00ffff;
+            transform: scale(1.02);
+            background: rgba(0, 15, 30, 0.85);
+        }
+
+        /* Specific Positions */
+        .top-left { top: 40px; left: 40px; border-left: 3px solid #00ffff; }
+        .top-right { top: 40px; right: 40px; border-right: 3px solid #00ffff; text-align: right; }
+        .bottom-left { bottom: 80px; left: 40px; border-left: 3px solid #00ffff; }
+        .bottom-right { bottom: 80px; right: 40px; border-right: 3px solid #00ffff; text-align: right; }
+
+        .corner-card h3 {
+            font-family: 'Orbitron', sans-serif;
+            color: #fff;
+            margin: 0 0 8px 0;
+            font-size: 1.1rem;
             display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            padding: 8px;
-            background: #f0f4ff;
-            border-radius: 4px;
+            align-items: center;
         }
+        
+        /* Align icons for right-side cards */
+        .top-right h3, .bottom-right h3 { justify-content: flex-end; }
+
+        .corner-card p {
+            color: #ccc; /* Much brighter than previous grey */
+            font-size: 0.95rem;
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .card-icon { color: #00ffff; margin: 0 10px; font-size: 1.2em;}
+
+        /* --- BOTTOM HINTS --- */
+        .hints {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.5);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
+            z-index: 5;
+            pointer-events: none;
+        }
+        .hint-icon { margin: 0 15px; display: inline-block; transition: color 0.3s; }
+        .hint-active { color: #00ffff; text-shadow: 0 0 10px #00ffff; font-weight: bold; }
+
+        #loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: cyan;
+            z-index: 20;
+            font-family: 'Orbitron', sans-serif;
+            animation: pulse 1s infinite;
+        }
+
+        /* --- MOBILE OPTIMIZATION --- */
+        @media (max-width: 900px) {
+            body { overflow-y: auto; } /* Allow scrolling on phone */
+            
+            h1 { font-size: 3.5rem; letter-spacing: 5px; margin-top: 60px; }
+            h2 { font-size: 1rem; letter-spacing: 2px; }
+
+            .center-overlay {
+                position: relative;
+                top: 0; left: 0;
+                transform: none;
+                padding-bottom: 40px;
+                height: auto;
+            }
+
+            #canvas-container {
+                position: fixed; /* Keep canvas background fixed */
+            }
+
+            /* Stack cards vertically on mobile */
+            .corner-card {
+                position: relative;
+                width: 85%;
+                margin: 15px auto;
+                top: auto !important;
+                left: auto !important;
+                right: auto !important;
+                bottom: auto !important;
+                text-align: left !important; /* Reset right alignment */
+                border-left: 3px solid #00ffff !important;
+                border-right: 1px solid rgba(0,255,255,0.2) !important;
+            }
+            
+            .corner-card h3 { justify-content: flex-start !important; }
+            
+            /* Hide hints on very small screens to save space */
+            .hints { display: none; }
+            
+            .cta-container { margin-bottom: 20px; }
+        }
+
+        @keyframes glitch-glow {
+            0% { text-shadow: 0 0 20px rgba(0,255,255,0.6); }
+            100% { text-shadow: 0 0 40px rgba(0,255,255,0.9); }
+        }
+        @keyframes pulse { 0% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header class="header">
-            <h1>🎬 VisLang</h1>
-            <p>Real-time Vision & Language Processing</p>
-            <div id="statusBar" class="status-bar">⏳ Checking...</div>
-        </header>
 
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="detection">📸 Detection</button>
-            <button class="tab-btn" data-tab="chat">💬 Chat</button>
-            <button class="tab-btn" data-tab="video">🎥 Video</button>
-            <button class="tab-btn" data-tab="segmentation">✨ Segmentation</button>
-        </div>
+    <div id="loading">Initializing Neural Interface...</div>
+    <video id="input-video"></video>
+    <div id="canvas-container"></div>
 
-        <div id="detection" class="tab-content active">
-            <div class="det-layout">
-                <div class="card det-main">
-                    <h2>📸 Object Detection</h2>
-                    <p>Upload an image to detect objects. <strong>Click on a box to segment it!</strong></p>
-                    
-                    <input type="file" id="imageInput" accept="image/*" style="display:none;">
-                    <button class="btn btn-primary" onclick="document.getElementById('imageInput').click()">📁 Select Image</button>
-
-                    <button id="detectBtn" class="btn btn-success hidden" onclick="detectImage()">🚀 Detect Objects</button>
-
-                    <div id="errorMsg" class="error hidden"></div>
-                    <div id="loadingMsg" class="loading hidden">⏳ Processing...</div>
-
-                    <div id="detCanvasContainer" class="preview hidden">
-                        <canvas id="detCanvas" style="max-width:100%; border:1px solid #ccc; border-radius:8px; cursor:pointer;"></canvas>
-                        <p style="font-size:12px; color:#666; margin-top:5px;">💡 Tip: Click any green box to generate SAM mask</p>
-                    </div>
-
-                    <div id="results" class="hidden">
-                        <h3 style="margin: 15px 0;">📊 Overview</h3>
-                        <p>File: <strong id="fileName"></strong> | Objects: <strong id="objCount">0</strong></p>
-                    </div>
-                </div>
-
-                <div id="samPanel" class="card det-sidebar hidden">
-                    <h3>✨ Segmented Object</h3>
-                    <div id="samLoading" class="loading hidden">Running SAM...</div>
-                    
-                    <div id="samContent" class="hidden">
-                        <div class="stat-box">
-                            <strong>Class:</strong> <span id="samClass"></span>
-                        </div>
-                        <div class="stat-box">
-                            <strong>Area:</strong> <span id="samArea"></span>
-                        </div>
-                        <div class="stat-box">
-                            <strong>Conf:</strong> <span id="samConf"></span>
-                        </div>
-
-                        <div class="asset-preview">
-                            <p><strong>Background Removed</strong></p>
-                            <img id="samNoBg" src="" alt="No BG" style="background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%); background-size: 20px 20px;">
-                            <a id="dlNoBg" class="btn btn-primary" style="padding:5px; font-size:12px;" download>Download PNG</a>
-                        </div>
-
-                        <div class="asset-preview">
-                            <p><strong>Clean Crop</strong></p>
-                            <img id="samCrop" src="" alt="Crop">
-                            <a id="dlCrop" class="btn btn-primary" style="padding:5px; font-size:12px;" download>Download JPG</a>
-                        </div>
-
-                        <div class="asset-preview">
-                            <p><strong>Precise Mask</strong></p>
-                            <img id="samMask" src="" alt="Mask">
-                            <a id="dlMask" class="btn btn-primary" style="padding:5px; font-size:12px;" download>Download Mask</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="chat" class="tab-content hidden">
-            <div class="card">
-                <h2>💬 Image Chat</h2>
-                <p>Ask questions about your image</p>
-                <input type="file" id="chatInput" accept="image/*" style="display:none;">
-                <button class="btn btn-primary" onclick="document.getElementById('chatInput').click()">📁 Select Image</button>
-                <div id="chatPreview" class="preview hidden">
-                    <img id="chatImg" src="" alt="Preview">
-                </div>
-                <div id="chatUI" class="hidden">
-                    <div class="chat-box" id="chatBox"></div>
-                    <div class="form-group">
-                        <label>Message:</label>
-                        <textarea id="question" class="form-control" placeholder="Ask a question..." style="height:80px;"></textarea>
-                    </div>
-                    <button class="btn btn-success" onclick="sendChat()">💬 Send</button>
-                    <button class="btn btn-primary" onclick="describeImg()" style="margin-top:10px;">📝 Describe</button>
-                    <button class="btn btn-primary" onclick="resetChat()" style="margin-top:10px;">🔄 Reset</button>
-                    <div id="chatLoading" class="loading hidden">AI thinking...</div>
-                </div>
-            </div>
-        </div>
-
-        <div id="video" class="tab-content hidden">
-                    <div class="card" style="margin-top: 20px; border-left: 4px solid #F59E0B;">
-    <h2>🧠 Video Understanding</h2>
-    <p>Generate a text summary of events in the video.</p>
-    
-    <button id="summarizeBtn" class="btn" style="background: #F59E0B; color: white;" onclick="summarizeVideo()">
-        <i class="fas fa-file-alt"></i> Generate Summary
-    </button>
-    
-    <div id="summaryLoading" class="loading hidden">AI is watching the video...</div>
-    
-    <div id="summaryResult" class="hidden" style="margin-top: 15px;">
-        <h3>📝 AI Summary:</h3>
-        <div id="summaryText" style="padding: 15px; background: #FFF8E1; border-radius: 6px; line-height: 1.6;"></div>
-    </div>
-</div>
-            <div class="card">
-                <h2>🎬 Video Processing</h2>
-                <p>Process videos frame-by-frame</p>
-                <div class="form-group">
-                    <label>Threshold: <span id="threshDisplay">0.50</span></label>
-                    <input type="range" id="threshold" min="0" max="1" step="0.05" value="0.5" onchange="updateThresh()">
-                </div>
-                <input type="file" id="videoInput" accept="video/*" style="display:none;">
-                <button class="btn btn-primary" onclick="document.getElementById('videoInput').click()">📁 Select Video</button>
-                <div id="videoInfo" class="hidden" style="background:#f0f0f0;padding:10px;border-radius:6px;margin:15px 0;">
-                    <p>📹 <strong id="videoName"></strong> (<span id="videoSize"></span> MB)</p>
-                </div>
-                <button id="processBtn" class="btn btn-success hidden" onclick="processVideo()">🚀 Process</button>
-                <div id="progress" class="hidden" style="margin:15px 0;">
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progressBar"></div>
-                    </div>
-                    <p style="text-align:center;font-size:12px;color:#666;"><span id="progressPct">0</span>%</p>
-                </div>
-                <div id="videoError" class="error hidden"></div>
-                <div id="stats" class="hidden">
-                    <h3 style="margin:15px 0;">📊 Results</h3>
-                    <table>
-                        <tr><td><strong>Frames:</strong></td><td id="statFrames">0</td></tr>
-                        <tr><td><strong>FPS:</strong></td><td id="statFps">0</td></tr>
-                        <tr><td><strong>Detections:</strong></td><td id="statDets">0</td></tr>
-                        <tr><td><strong>Duration:</strong></td><td id="statDur">0s</td></tr>
-                    </table>
-                    <button class="btn btn-success" onclick="downloadVideo()" style="margin-top:15px;width:100%;">📥 Download</button>
-                </div>
-            </div>
-        </div>
-
-
-        <div id="segmentation" class="tab-content hidden">
-            <div class="card">
-                <h2>✨ AI Image Segmentation (SAM)</h2>
-                <p>Click to segment objects in your image</p>
-                <input type="file" id="segInput" accept="image/*" style="display:none;">
-                <button class="btn btn-primary" onclick="document.getElementById('segInput').click()">📁 Select Image</button>
-                <div id="segPreview" class="preview hidden">
-                    <canvas id="segCanvas" style="max-width:100%; border: 1px solid #ccc; border-radius: 8px; cursor: crosshair;"></canvas>
-                    <p id="segStatus" style="margin-top: 10px; color: #666;">Ready for clicks</p>
-                </div>
-                <div id="segControls" class="seg-controls hidden">
-                    <div class="seg-info">
-                        <p><strong>Left Click:</strong> Include object (green indicator)</p>
-                        <p><strong>Right Click:</strong> Exclude area (red indicator)</p>
-                        <p><strong>Prompts:</strong> <span id="promptCount">0</span></p>
-                    </div>
-                    <button class="btn btn-success" onclick="runSegmentation()">🎯 Segment</button>
-                    <button class="btn btn-primary" onclick="clearSegPoints()" style="margin-top: 10px;">🗑️ Clear Clicks</button>
-                    <button class="btn btn-primary" onclick="resetSegmentation()" style="margin-top: 10px;">↻ Reset All</button>
-                </div>
-                <div id="segError" class="error hidden"></div>
-                <div id="segLoading" class="loading hidden">⏳ Segmenting...</div>
-                <div id="segResults" class="seg-results hidden">
-                    <h3>📊 Results</h3>
-                    <div class="seg-stats">
-                        <p>Confidence: <strong id="segConfidence">0.00%</strong></p>
-                        <p>Pixels: <strong id="segPixels">0</strong></p>
-                        <p>Coverage: <strong id="segCoverage">0%</strong></p>
-                    </div>
-                    <button class="btn btn-success" onclick="downloadSegViz()" style="margin-bottom: 10px;">📥 Download Visualization</button>
-                    <button class="btn btn-success" onclick="downloadSegMask()">📥 Download Mask</button>
-                </div>
-            </div>
+    <div class="center-overlay">
+        <h1>VisLang</h1>
+        <h2>Real-Time Vision & Language Intelligence</h2>
+        
+        <div class="cta-container">
+            <a href="dashboard.html" class="btn-launch">Enter Studio</a>
         </div>
     </div>
-    <script src="../js/app.js"></script>
+
+    <div class="corner-card top-left">
+        <h3><span class="card-icon">◈</span> Object Intelligence</h3>
+        <p>Real-time detection using <strong>YOLOv8</strong>. Instantly identify and track objects in your environment with millisecond latency.</p>
+    </div>
+
+    <div class="corner-card top-right">
+        <h3>Vision Chat <span class="card-icon">💬</span></h3>
+        <p>Conversational AI that "sees" what you see. Ask questions about the scene and get context-aware answers instantly.</p>
+    </div>
+
+    <div class="corner-card bottom-left">
+        <h3><span class="card-icon">🎥</span> Video Analytics</h3>
+        <p>Upload video feeds for automated detection and summarization. Get concise insights from long-form footage.</p>
+    </div>
+
+    <div class="corner-card bottom-right">
+        <h3>SAM Segmentation <span class="card-icon">✂️</span></h3>
+        <p>Powered by the <strong>Segment Anything Model</strong>. Isolate complex objects from backgrounds with pixel-perfect precision.</p>
+    </div>
+
+    <div class="hints">
+        <span class="hint-icon" id="h-color">👋 Move: Color</span>
+        <span class="hint-icon" id="h-flower">✌️ Peace: Flower</span>
+        <span class="hint-icon" id="h-camera">🤏 Pinch: Camera</span>
+        <span class="hint-icon" id="h-planet">✊ Fist: Planet</span>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        // --- CONFIGURATION ---
+        const PARTICLE_COUNT = 5500; 
+        const PARTICLE_SIZE = 0.35;
+        let currentShape = 'sphere';
+        
+        // --- THREE.JS SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.015); 
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 45; // Moved back slightly to account for UI elements
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // --- PARTICLE SYSTEM ---
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(PARTICLE_COUNT * 3);
+        const colors = new Float32Array(PARTICLE_COUNT * 3);
+        const targetPositions = new Float32Array(PARTICLE_COUNT * 3);
+        const colorObj = new THREE.Color();
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const i3 = i * 3;
+            const r = 18 * Math.cbrt(Math.random());
+            const theta = Math.random() * 2 * Math.PI;
+            const phi = Math.acos(2 * Math.random() - 1);
+
+            positions[i3] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            positions[i3 + 2] = r * Math.cos(phi);
+
+            targetPositions[i3] = positions[i3];
+            targetPositions[i3+1] = positions[i3+1];
+            targetPositions[i3+2] = positions[i3+2];
+
+            if(Math.random() > 0.5) {
+                colorObj.setHSL(0.55, 0.9, 0.6); 
+            } else {
+                colorObj.setHSL(0.8, 0.9, 0.6);
+            }
+            colors[i3] = colorObj.r;
+            colors[i3+1] = colorObj.g;
+            colors[i3+2] = colorObj.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: PARTICLE_SIZE,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.8,
+            map: getGlowTexture() 
+        });
+
+        function getGlowTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(16,16,0,16,16,16);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(0.4, 'rgba(255,255,255,0.3)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0,0,32,32);
+            return new THREE.Texture(canvas);
+        }
+        material.map.needsUpdate = true;
+
+        const particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        // --- SHAPE LOGIC ---
+        function setTargetShape(shapeType) {
+            currentShape = shapeType;
+            const scale = 14; 
+            
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const i3 = i * 3;
+                let x, y, z;
+
+                if (shapeType === 'sphere') {
+                    const r = scale * 1.2 * Math.cbrt(Math.random());
+                    const theta = Math.random() * 2 * Math.PI;
+                    const phi = Math.acos(2 * Math.random() - 1);
+                    x = r * Math.sin(phi) * Math.cos(theta);
+                    y = r * Math.sin(phi) * Math.sin(theta);
+                    z = r * Math.cos(phi);
+                } 
+                else if (shapeType === 'camera') {
+                    const p = Math.random();
+                    if (p < 0.6) { 
+                        x = (Math.random() - 0.5) * 20;
+                        y = (Math.random() - 0.5) * 12;
+                        z = (Math.random() - 0.5) * 6;
+                    } else if (p < 0.9) { 
+                        const r = Math.random() * 5.5;
+                        const theta = Math.random() * Math.PI * 2;
+                        x = r * Math.cos(theta);
+                        y = r * Math.sin(theta);
+                        z = 3 + Math.random() * 6;
+                    } else { 
+                        x = 5 + (Math.random() - 0.5) * 4;
+                        y = 6 + Math.random() * 2;
+                        z = (Math.random() - 0.5) * 4;
+                    }
+                } 
+                else if (shapeType === 'flower') {
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.random() * Math.PI;
+                    const r = scale * (1 + 0.5 * Math.sin(4 * theta) * Math.sin(4 * phi));
+                    x = r * Math.sin(phi) * Math.cos(theta);
+                    y = r * Math.sin(phi) * Math.sin(theta);
+                    z = r * Math.cos(phi) * 0.5;
+                } 
+                else if (shapeType === 'saturn') {
+                    if (Math.random() > 0.45) { 
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = (scale * 1.4) + Math.random() * (scale * 0.8);
+                        x = Math.cos(angle) * dist;
+                        z = Math.sin(angle) * dist;
+                        y = (Math.random() - 0.5) * 1.5;
+                    } else { 
+                        const r = scale * 0.9 * Math.cbrt(Math.random());
+                        const theta = Math.random() * 2 * Math.PI;
+                        const phi = Math.acos(2 * Math.random() - 1);
+                        x = r * Math.sin(phi) * Math.cos(theta);
+                        y = r * Math.sin(phi) * Math.sin(theta);
+                        z = r * Math.cos(phi);
+                    }
+                }
+                targetPositions[i3] = x;
+                targetPositions[i3+1] = y;
+                targetPositions[i3+2] = z;
+            }
+        }
+
+        // --- HAND TRACKING & UI FEEDBACK ---
+        const videoElement = document.getElementById('input-video');
+        
+        function activateHint(id) {
+            document.querySelectorAll('.hint-icon').forEach(el => el.classList.remove('hint-active'));
+            const el = document.getElementById(id);
+            if(el) el.classList.add('hint-active');
+        }
+
+        function onResults(results) {
+            document.getElementById('loading').style.display = 'none';
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                const index = hand[8];
+                const thumb = hand[4];
+                const middle = hand[12];
+                const wrist = hand[0];
+
+                const hueShift = Math.abs(1 - index.x); 
+                particles.material.color.setHSL(hueShift, 0.9, 0.6);
+                activateHint('h-color');
+                
+                const rotX = (index.y - 0.5) * 2;
+                const rotY = (index.x - 0.5) * 2;
+                particles.rotation.x += (rotX - particles.rotation.x) * 0.08;
+                particles.rotation.y += (rotY - particles.rotation.y) * 0.08;
+
+                const dx = index.x - thumb.x;
+                const dy = index.y - thumb.y;
+                const distPinch = Math.sqrt(dx*dx + dy*dy);
+                const isFist = (middle.y > wrist.y - 0.05);
+
+                if (isFist) {
+                    if (currentShape !== 'saturn') { setTargetShape('saturn'); activateHint('h-planet'); }
+                } else if (distPinch < 0.05) {
+                    if (currentShape !== 'camera') { setTargetShape('camera'); activateHint('h-camera'); }
+                } else if (Math.abs(index.x - middle.x) > 0.12) { 
+                    if (currentShape !== 'flower') { setTargetShape('flower'); activateHint('h-flower'); }
+                } else {
+                    if (currentShape !== 'sphere' && Math.random() > 0.95) setTargetShape('sphere');
+                }
+            } else {
+                const time = Date.now() * 0.0005;
+                particles.rotation.y += 0.003;
+                particles.material.color.setHSL(0.6 + Math.sin(time) * 0.1, 0.8, 0.6);
+                document.querySelectorAll('.hint-icon').forEach(el => el.classList.remove('hint-active'));
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        hands.onResults(onResults);
+
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 320, height: 240
+        });
+        cameraUtils.start();
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const time = Date.now() * 0.001;
+            
+            const posAttr = geometry.attributes.position;
+            const speed = 3.5 * delta;
+
+            for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
+                posAttr.array[i] += (targetPositions[i] - posAttr.array[i]) * speed;
+                if (currentShape === 'sphere') {
+                    const noise = Math.sin(time + posAttr.array[i]*0.5) * 0.02;
+                    posAttr.array[i] += noise;
+                }
+            }
+            posAttr.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
 </body>
 </html>

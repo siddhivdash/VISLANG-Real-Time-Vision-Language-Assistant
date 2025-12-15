@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VisLang - Vision Language Assistant</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            /* --- LIGHT THEME (Default) --- */
+            --primary: #4F46E5;       /* Indigo-600 */
+            --primary-hover: #4338ca; /* Indigo-700 */
+            --bg-body: #F3F4F6;       /* Gray-100 */
+            --bg-card: #FFFFFF;       /* White */
+            --bg-hover: #F9FAFB;      /* Gray-50 */
+            --bg-active: #EEF2FF;     /* Indigo-50 */
+            --text-main: #111827;     /* Gray-900 */
+            --text-muted: #6B7280;    /* Gray-500 */
+            --border: #E5E7EB;        /* Gray-200 */
+            --success: #10B981;       /* Emerald-500 */
+            
+            --sidebar-width: 280px; /* Slightly wider for the logo */
+            --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --input-bg: #FFFFFF;
+
+            /* --- CURVY DESIGN VARS --- */
+            --radius-card: 24px;      /* Very rounded cards */
+            --radius-btn: 50px;       /* Pill shaped buttons */
+            --radius-input: 16px;     /* Soft inputs */
+        }
+
+        /* --- DARK THEME OVERRIDES --- */
+        [data-theme="dark"] {
+            --primary: #6366f1;       /* Indigo-500 */
+            --primary-hover: #818cf8; /* Indigo-400 */
+            --bg-body: #0f172a;       /* Slate-900 */
+            --bg-card: #1e293b;       /* Slate-800 */
+            --bg-hover: #334155;      /* Slate-700 */
+            --bg-active: #1e1b4b;     /* Indigo-950 */
+            --text-main: #f8fafc;     /* Slate-50 */
+            --text-muted: #94a3b8;    /* Slate-400 */
+            --border: #334155;        /* Slate-700 */
+            --shadow-card: none;
+            --input-bg: #0f172a;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-card);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            padding: 30px;
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: 10;
+            transition: background-color 0.3s, border-color 0.3s;
+        }
+
+        .brand {
+            display: flex;
+            justify-content: center; /* Center the logo */
+            align-items: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* LOGO STYLING */
+        .brand-logo {
+            max-width: 100%;
+            height: auto;
+            max-height: 60px; /* Adjust based on logo size */
+            object-fit: contain;
+            /* Filter for dark mode if logo is black text (optional) */
+            /* filter: invert(0); */
+        }
+        
+        /* Optional: Invert logo color in dark mode if it's a black PNG 
+        [data-theme="dark"] .brand-logo { filter: invert(1); } 
+        */
+
+        .tabs { display: flex; flex-direction: column; gap: 12px; }
+
+        .tab-btn {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 20px;
+            background: transparent;
+            border: none;
+            border-radius: var(--radius-btn); /* CURVY PILL SHAPE */
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 14px;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s ease;
+            width: 100%;
+        }
+
+        .tab-btn:hover { background-color: var(--bg-hover); color: var(--text-main); }
+
+        .tab-btn.active {
+            background-color: var(--bg-active);
+            color: var(--primary);
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(79, 70, 229, 0.1);
+        }
+
+        /* Sidebar Footer */
+        .sidebar-footer {
+            margin-top: auto;
+            padding-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+            background: var(--bg-body);
+            padding: 10px 16px;
+            border-radius: var(--radius-btn); /* CURVY */
+            border: 1px solid var(--border);
+        }
+        .status-dot { width: 8px; height: 8px; background-color: var(--success); border-radius: 50%; display: inline-block; }
+
+        .theme-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 14px;
+            padding: 10px 16px;
+            border-radius: var(--radius-btn); /* CURVY */
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+        }
+        .theme-toggle:hover { background-color: var(--bg-hover); color: var(--text-main); border-color: var(--text-muted); }
+
+        /* --- MAIN CONTENT --- */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            height: 100vh;
+            overflow-y: auto;
+            padding: 40px;
+            background-color: var(--bg-body);
+            transition: background-color 0.3s;
+            /* Subtle curve background decoration */
+            background-image: radial-gradient(circle at 0% 0%, rgba(79, 70, 229, 0.03) 0%, transparent 40%);
+        }
+
+        .header-area { margin-bottom: 32px; }
+        .header-area h2 { font-size: 28px; font-weight: 700; color: var(--text-main); letter-spacing: -0.5px; }
+        .header-area p { color: var(--text-muted); font-size: 15px; margin-top: 6px; }
+
+        /* --- CARDS --- */
+        .tab-content { display: none !important; animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .tab-content.active { display: block !important; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-card); /* CURVY */
+            padding: 30px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-card);
+            transition: background-color 0.3s, border-color 0.3s;
+        }
+
+        .card h2 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .card h2 i { 
+            background: var(--bg-active); 
+            color: var(--primary); 
+            padding: 8px; 
+            border-radius: 12px; /* Soft square icon bg */
+            font-size: 18px;
+        }
+
+        .feature-desc {
+            font-size: 15px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+            line-height: 1.6;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* --- UI ELEMENTS --- */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 12px 24px; 
+            border-radius: var(--radius-btn); /* CURVY */
+            font-weight: 600; font-size: 14px;
+            cursor: pointer; border: 1px solid transparent; transition: all 0.2s; gap: 8px;
+        }
+        .btn-primary { background-color: var(--primary); color: white; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2); }
+        .btn-primary:hover { background-color: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 6px 8px -1px rgba(79, 70, 229, 0.3); }
+        .btn-success { background-color: var(--success); color: white; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2); }
+        .btn-success:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-outline { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); }
+        .btn-outline:hover { border-color: var(--text-muted); background: var(--bg-hover); }
+
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-card); /* CURVY */
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            background: var(--bg-body);
+            transition: all 0.2s;
+        }
+        .upload-area:hover { border-color: var(--primary); background: var(--bg-active); }
+
+        /* --- SPECIFIC LAYOUTS --- */
+        .det-layout { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
+        .det-sidebar {
+            background: var(--bg-card); border: 1px solid var(--border); 
+            border-radius: var(--radius-card); /* CURVY */
+            padding: 24px;
+        }
+
+        .preview {
+            background: #000; border-radius: var(--radius-input); /* CURVY */
+            overflow: hidden; display: flex;
+            justify-content: center; align-items: center; min-height: 200px; margin: 20px 0;
+            border: 1px solid var(--border);
+        }
+        .preview img, .preview canvas { max-width: 100%; height: auto; display: block; }
+
+        /* Chat Specific */
+        .chat-box {
+            background: var(--bg-body); border: 1px solid var(--border); 
+            border-radius: var(--radius-card); /* CURVY */
+            height: 400px; overflow-y: auto; padding: 20px; margin-bottom: 20px;
+            display: flex; flex-direction: column;
+        }
+        .chat-message.assistant {
+            background-color: var(--bg-card); border: 1px solid var(--border); color: var(--text-main);
+            padding: 14px 18px; 
+            border-radius: 20px; border-bottom-left-radius: 4px; /* Organic bubble shape */
+            max-width: 80%; align-self: flex-start; margin-bottom: 12px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .chat-message.user {
+            background-color: var(--primary); color: white;
+            padding: 14px 18px; 
+            border-radius: 20px; border-bottom-right-radius: 4px; /* Organic bubble shape */
+            max-width: 80%; align-self: flex-end; margin-bottom: 12px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .form-control {
+            width: 100%; padding: 14px; border: 1px solid var(--border); 
+            border-radius: var(--radius-input); /* CURVY */
+            background-color: var(--input-bg); color: var(--text-main);
+            font-family: inherit; font-size: 14px; resize: none; transition: border-color 0.2s;
+        }
+        .form-control:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+
+        /* Stats & Tables */
+        table th { background: var(--bg-body); color: var(--text-muted); border-bottom: 1px solid var(--border); padding: 12px; text-align: left;}
+        table td { border-bottom: 1px solid var(--border); padding: 12px; color: var(--text-main); }
+        .stat-box { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-main); }
+        .stat-box strong { color: var(--text-muted); }
+
+        /* Utilities */
+        .hidden { display: none !important; }
+        .error { background: rgba(239, 68, 68, 0.1); color: #EF4444; padding: 12px; border-radius: var(--radius-input); border: 1px solid rgba(239, 68, 68, 0.2); margin: 15px 0; font-size: 14px; }
+        .loading { color: var(--primary); font-weight: 600; text-align: center; padding: 20px; }
+        
+        /* Segmentation specific */
+        .seg-controls { background: var(--bg-body); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 20px; margin: 20px 0; }
+        .seg-info { background: var(--bg-card); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: var(--radius-input); padding: 15px; margin-bottom: 20px; color: var(--text-main); font-size: 14px; }
+
+        @media (max-width: 1024px) {
+            .det-layout { grid-template-columns: 1fr; }
+            .det-sidebar { max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="images/vislang-logo.jpg" alt="VisLang Logo" class="brand-logo">
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="detection">
+                <i class="fa-solid fa-camera"></i> Detection
+            </button>
+            <button class="tab-btn" data-tab="chat">
+                <i class="fa-solid fa-comments"></i> Visual Chat
+            </button>
+            <button class="tab-btn" data-tab="video">
+                <i class="fa-solid fa-video"></i> Video Analysis
+            </button>
+            <button class="tab-btn" data-tab="segmentation">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Segmentation
+            </button>
+        </div>
+
+        <div class="sidebar-footer">
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <span><i class="fa-solid fa-circle-half-stroke"></i> Theme</span>
+                <span id="themeLabel">Light</span>
+            </button>
+
+            <div id="statusBar" class="status-bar">
+                <span class="status-dot"></span>
+                <span id="statusText">System Ready</span>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        
+        <div class="header-area">
+            <h2 id="pageTitle">Object Detection</h2>
+            <p>Real-time computer vision and language processing pipeline.</p>
+        </div>
+
+        <div id="detection" class="tab-content active">
+            <div class="det-layout">
+                <div class="det-main">
+                    <div class="card">
+                        <h2><i class="fa-solid fa-crop-simple"></i> Object Detection</h2>
+                        <div class="feature-desc">
+                            Leverage state-of-the-art <strong>YOLOv8</strong> models to instantly identify objects within images. The system renders bounding boxes around detected entities. You can interact with these detections by <strong>clicking on any box</strong> to trigger the Segment Anything Model (SAM) for precise masking.
+                        </div>
+
+                        <div class="upload-area">
+                            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 32px; color: var(--text-muted); margin-bottom: 10px;"></i>
+                            <p style="margin-bottom: 15px; color: var(--text-muted);">Upload an image to detect objects</p>
+                            <input type="file" id="imageInput" accept="image/*" style="display:none;">
+                            <button class="btn btn-primary" onclick="document.getElementById('imageInput').click()">Select Image</button>
+                        </div>
+
+                        <button id="detectBtn" class="btn btn-success hidden" onclick="detectImage()" style="width: 100%;">
+                            <i class="fa-solid fa-rocket"></i> Run Detection
+                        </button>
+
+                        <div id="errorMsg" class="error hidden"></div>
+                        <div id="loadingMsg" class="loading hidden"><i class="fa-solid fa-circle-notch fa-spin"></i> Processing...</div>
+
+                        <div id="detCanvasContainer" class="preview hidden" style="background: transparent; border: none;">
+                            <canvas id="detCanvas" style="max-width:100%; border-radius:12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); cursor:pointer;"></canvas>
+                        </div>
+                        <p id="detTip" class="hidden" style="font-size:12px; color:var(--text-muted); text-align: center; margin-top: 10px;">
+                            <i class="fa-regular fa-lightbulb"></i> Tip: Click any green box to generate SAM mask
+                        </p>
+
+                        <div id="results" class="hidden" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+                            <h3 style="font-size: 16px; margin-bottom: 10px; color: var(--text-main);">Analysis Overview</h3>
+                            <p style="font-size: 14px; color: var(--text-muted);">File: <strong style="color: var(--text-main);" id="fileName"></strong> | Objects: <strong style="color: var(--text-main);" id="objCount">0</strong></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="samPanel" class="det-sidebar hidden">
+                    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">Selected Object</h3>
+                    <div id="samLoading" class="loading hidden">Running SAM...</div>
+                    
+                    <div id="samContent" class="hidden">
+                        <div style="background: var(--bg-body); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 15px;">
+                            <div class="stat-box"><strong>Class</strong> <span id="samClass">-</span></div>
+                            <div class="stat-box"><strong>Area</strong> <span id="samArea">-</span></div>
+                            <div class="stat-box"><strong>Conf</strong> <span id="samConf">-</span></div>
+                        </div>
+
+                        <div style="background: var(--bg-body); border: 1px solid var(--border); padding: 10px; border-radius: 12px; text-align: center; margin-bottom: 10px;">
+                            <p style="font-size: 12px; font-weight: 600; margin-bottom: 5px; color: var(--text-main);">Background Removed</p>
+                            <img id="samNoBg" src="" alt="No BG" style="max-height: 100px; display: block; margin: 0 auto 10px; background-image: linear-gradient(45deg, #888 25%, transparent 25%), linear-gradient(-45deg, #888 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #888 75%), linear-gradient(-45deg, transparent 75%, #888 75%); background-size: 10px 10px;">
+                            <a id="dlNoBg" class="btn btn-primary" style="padding:8px 16px; font-size:12px; width: 100%;" download>Download PNG</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="chat" class="tab-content hidden">
+            <div class="card" style="max-width: 800px; margin: 0 auto;">
+                <h2><i class="fa-regular fa-image"></i> Visual QA & Chat</h2>
+                <div class="feature-desc">
+                    Engage in a natural conversation with your visual data using a <strong>Multi-modal Large Language Model (LLM)</strong>. Upload an image and ask specific questions about the scene, objects, or text within it. The system analyzes visual features to provide context-aware, descriptive answers.
+                </div>
+
+                <div class="upload-area">
+                    <input type="file" id="chatInput" accept="image/*" style="display:none;">
+                    <button class="btn btn-primary" onclick="document.getElementById('chatInput').click()">Upload Reference Image</button>
+                </div>
+
+                <div id="chatPreview" class="preview hidden" style="background: transparent; border: none; min-height: auto;">
+                    <img id="chatImg" src="" alt="Preview" style="max-height: 200px; border-radius: 12px;">
+                </div>
+
+                <div id="chatUI" class="hidden" style="margin-top: 20px;">
+                    <div class="chat-box" id="chatBox">
+                        <div class="chat-message assistant">Hello! Upload an image and ask me anything about it.</div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                         <textarea id="question" class="form-control" placeholder="Type your question..." rows="1"></textarea>
+                         <button class="btn btn-success" onclick="sendChat()" style="height: auto;"><i class="fa-solid fa-paper-plane"></i></button>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-outline" onclick="describeImg()" style="flex: 1;">Describe Image</button>
+                        <button class="btn btn-outline" onclick="resetChat()" style="flex: 1;">Reset Chat</button>
+                    </div>
+                    
+                    <div id="chatLoading" class="loading hidden"><i class="fa-solid fa-ellipsis fa-bounce"></i> AI thinking...</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="video" class="tab-content hidden">
+            <div class="card" style="border-left: 4px solid #F59E0B;">
+                <h2 style="border-bottom: none; padding-bottom: 0; margin-bottom: 10px; color: #D97706;">
+                    <i class="fa-solid fa-brain"></i> Video Summarization
+                </h2>
+                <div class="feature-desc">
+                    Automatically generate a textual summary of events occurring in a video file. The AI watches the footage and creates a concise narrative, perfect for reviewing surveillance footage or long recordings quickly.
+                </div>
+                
+                <button id="summarizeBtn" class="btn" style="background: #FFFBEB; color: #D97706; border: 1px solid #FCD34D;" onclick="summarizeVideo()">
+                    <i class="fa-solid fa-file-lines"></i> Generate Summary
+                </button>
+                
+                <div id="summaryLoading" class="loading hidden">AI is watching the video...</div>
+                
+                <div id="summaryResult" class="hidden" style="margin-top: 15px;">
+                    <h3 style="font-size: 14px; margin-bottom: 8px; color: var(--text-main);">AI Summary:</h3>
+                    <div id="summaryText" style="padding: 16px; background: #FFFBEB; border-radius: 12px; line-height: 1.6; font-size: 14px; color: #4B5563; border: 1px solid #FEF3C7;"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2><i class="fa-solid fa-film"></i> Frame Processing</h2>
+                <div class="feature-desc">
+                    Process video files frame-by-frame to extract structured data. This tool detects objects in every frame based on your confidence threshold, calculates FPS, and compiles a comprehensive report of visual entities found throughout the clip.
+                </div>
+
+                <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                    <div style="flex: 1;">
+                         <label style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; color: var(--text-main);">Detection Threshold: <span id="threshDisplay" style="color: var(--primary);">0.50</span></label>
+                         <input type="range" id="threshold" min="0" max="1" step="0.05" value="0.5" onchange="updateThresh()" style="width: 100%;">
+                    </div>
+                </div>
+
+                <div class="upload-area" style="padding: 20px;">
+                    <input type="file" id="videoInput" accept="video/*" style="display:none;">
+                    <button class="btn btn-primary" onclick="document.getElementById('videoInput').click()">Select Video File</button>
+                </div>
+
+                <div id="videoInfo" class="hidden" style="background: var(--bg-body); padding: 12px; border-radius: 12px; margin: 15px 0; border: 1px solid var(--border);">
+                    <p style="font-size: 14px; display: flex; align-items: center; gap: 10px; color: var(--text-main);">
+                        <i class="fa-solid fa-file-video"></i> 
+                        <strong id="videoName"></strong> 
+                        <span style="color: var(--text-muted); font-size: 12px;">(<span id="videoSize"></span> MB)</span>
+                    </p>
+                </div>
+
+                <button id="processBtn" class="btn btn-success hidden" onclick="processVideo()" style="width: 100%; margin-bottom: 15px;">Start Processing</button>
+
+                <div id="progress" class="hidden" style="margin: 15px 0;">
+                    <div style="width: 100%; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                        <div class="progress-fill" id="progressBar" style="height: 100%; background: var(--primary); width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                    <p style="text-align: right; font-size: 12px; color: var(--text-muted); margin-top: 4px;"><span id="progressPct">0</span>%</p>
+                </div>
+
+                <div id="videoError" class="error hidden"></div>
+
+                <div id="stats" class="hidden">
+                    <h3 style="margin: 20px 0 10px 0; font-size: 16px; color: var(--text-main);">Processing Results</h3>
+                    <table>
+                        <tr><td>Frames</td><td id="statFrames" style="text-align: right;">0</td></tr>
+                        <tr><td>FPS</td><td id="statFps" style="text-align: right;">0</td></tr>
+                        <tr><td>Detections</td><td id="statDets" style="text-align: right;">0</td></tr>
+                    </table>
+                    <button class="btn btn-success" onclick="downloadVideo()" style="margin-top: 20px; width: 100%;">
+                        <i class="fa-solid fa-download"></i> Download Processed Video
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="segmentation" class="tab-content hidden">
+            <div class="card">
+                <h2><i class="fa-solid fa-scissors"></i> Interactive Segmentation</h2>
+                <div class="feature-desc">
+                    Experience pixel-perfect precision. <strong>Left Click</strong> to add points (Green), <strong>Right Click</strong> to remove areas (Red).
+                </div>
+
+                <div class="upload-area">
+                    <input type="file" id="segInput" accept="image/*" style="display:none;">
+                    <button class="btn btn-primary" onclick="document.getElementById('segInput').click()">Select Image</button>
+                </div>
+
+                <div id="segPreview" class="preview hidden" style="background: var(--bg-body); border: 1px solid var(--border); position: relative;">
+                    <canvas id="segCanvas" style="max-width:100%; display: block; cursor: crosshair;"></canvas>
+                </div>
+                <p id="segStatus" class="hidden" style="text-align: center; color: var(--text-muted); font-size: 14px; margin-top: 5px;">Ready for input</p>
+
+                <div id="segControls" class="seg-controls hidden">
+                    <div class="seg-info">
+                        <p><strong><i class="fa-solid fa-computer-mouse"></i> Left Click:</strong> Include (Green)</p>
+                        <p><strong><i class="fa-solid fa-computer-mouse"></i> Right Click:</strong> Exclude (Red)</p>
+                        <p style="margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border);">Active Prompts: <strong id="promptCount">0</strong></p>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="runSegmentation()" style="flex: 2;"><i class="fa-solid fa-play"></i> Segment</button>
+                        <button class="btn btn-outline" onclick="clearSegPoints()" style="flex: 1;">Clear</button>
+                        <button class="btn btn-outline" onclick="resetSegmentation()" style="flex: 1;">Reset</button>
+                    </div>
+                </div>
+
+                <div id="segError" class="error hidden"></div>
+                <div id="segLoading" class="loading hidden"><i class="fa-solid fa-spinner fa-spin"></i> Processing...</div>
+
+                <div id="segResults" class="seg-results hidden" style="background: var(--bg-active); border: 1px solid var(--primary); padding: 20px; border-radius: 12px; margin-top: 20px;">
+                    <h3 style="color: var(--primary); margin-bottom: 15px;">Results</h3>
+                    <div style="background: var(--bg-card); border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid var(--border);">
+                        <div class="stat-box"><strong>Confidence</strong> <span id="segConfidence">0.00%</span></div>
+                        <div class="stat-box"><strong>Pixels</strong> <span id="segPixels">0</span></div>
+                        <div class="stat-box"><strong>Coverage</strong> <span id="segCoverage">0%</span></div>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-success" onclick="downloadSegViz()" style="flex: 1;">Download Viz</button>
+                        <button class="btn btn-success" onclick="downloadSegMask()" style="flex: 1;">Download Mask</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script src="../js/app.js"></script>
+    <script>
+        // --- PAGE LOGIC ---
+        
+        // Tab Switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // Update Sidebar Active State
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+
+                // Update Page Title
+                const titleMap = {
+                    'detection': 'Object Detection',
+                    'chat': 'Visual QA & Chat',
+                    'video': 'Video Analysis',
+                    'segmentation': 'Interactive Segmentation'
+                };
+                const tabId = this.getAttribute('data-tab');
+                document.getElementById('pageTitle').innerText = titleMap[tabId];
+            });
+        });
+
+        // --- DARK MODE LOGIC ---
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            
+            html.setAttribute('data-theme', newTheme);
+            document.getElementById('themeLabel').innerText = newTheme.charAt(0).toUpperCase() + newTheme.slice(1);
+            
+            // Save preference
+            localStorage.setItem('theme', newTheme);
+        }
+
+        // Initialize Theme from LocalStorage
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        document.getElementById('themeLabel').innerText = savedTheme.charAt(0).toUpperCase() + savedTheme.slice(1);
+
+    </script>
+</body>
+</html>
