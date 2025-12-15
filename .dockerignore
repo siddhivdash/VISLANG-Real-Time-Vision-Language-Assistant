@@ -1,0 +1,20 @@
+# Ignore virtual environments
+ENV/
+venv/
+.venv/
+__pycache__/
+*/__pycache__/
+
+# Ignore git
+.git/
+.gitignore
+
+# Ignore heavy output/input folders
+backend/outputs/
+backend/uploads/
+
+# Ignore heavy model weights (we will map them instead)
+*.pt
+*.pth
+*.onnx
+backend/models/sam/

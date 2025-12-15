@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 import os
 import torch
 import io
@@ -18,13 +19,35 @@ import tempfile
 import shutil
 import time as time_module
 import cv2
-from fastapi.staticfiles import StaticFiles
 import time
 import traceback
 from models.video_summarizer import get_video_summarizer
 import asyncio
+import sys
+import psutil
+import uvicorn
 
 load_dotenv()
+
+# ============================================================
+# 1. ROBUST PATH SETUP (CRITICAL FIX)
+# ============================================================
+# Get the absolute path to the backend folder (e.g. /app/backend)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Define absolute paths for data directories
+# Docker will map these to the volume mounts defined in docker-compose
+OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
+UPLOADS_DIR = settings.UPLOAD_FOLDER 
+
+# Ensure directories exist
+os.makedirs(OUTPUTS_DIR, exist_ok=True)
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+print(f"📂 Server Directories Configured:")
+print(f"   - Base: {BASE_DIR}")
+print(f"   - Outputs: {OUTPUTS_DIR}")
+print(f"   - Uploads: {UPLOADS_DIR}")
 
 # ============================================================
 # HELPER: CONVERT NUMPY TO PYTHON NATIVE TYPES
@@ -62,11 +85,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
-# Create uploads folder if it doesn't exist
-os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
-os.makedirs('outputs', exist_ok=True)
+# MOUNT STATIC FILES (Correctly mapped to OUTPUTS_DIR)
+# This tells FastAPI: "When a user asks for /outputs/file.png, look in the ABSOLUTE OUTPUTS_DIR"
+app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
 
 # Video processing storage
 active_jobs = {}
@@ -99,8 +121,14 @@ print("="*60)
 # Load YOLOv8
 try:
     from ultralytics import YOLO
-    yolo_model = YOLO(settings.YOLO_MODEL)
-    print(f"✅ YOLOv8 loaded: {settings.YOLO_MODEL}")
+    # Check for local model file first
+    local_yolo = os.path.join(BASE_DIR, "yolov8n.pt")
+    if os.path.exists(local_yolo):
+        yolo_model = YOLO(local_yolo)
+        print(f"✅ YOLOv8 loaded from local file: {local_yolo}")
+    else:
+        yolo_model = YOLO(settings.YOLO_MODEL)
+        print(f"✅ YOLOv8 loaded from settings: {settings.YOLO_MODEL}")
 except Exception as e:
     print(f"❌ Failed to load YOLOv8: {e}")
     yolo_model = None
@@ -184,7 +212,7 @@ async def get_status():
 async def root():
     """Root endpoint with API documentation"""
     return JSONResponse({
-        'service': 'VisLang Backend API',
+        'service': 'VisLang Backend API','status': 'Online',
         'version': '0.2.3',
         'features': {
             'image_detection': '✅ Object Detection with YOLOv8',
@@ -224,8 +252,8 @@ async def detect_objects(file: UploadFile = File(...)):
         # Read uploaded file
         contents = await file.read()
         
-        # Save temporary file
-        temp_path = f"{settings.UPLOAD_FOLDER}/{file.filename}"
+        # Save temporary file using absolute path
+        temp_path = os.path.join(UPLOADS_DIR, file.filename)
         with open(temp_path, 'wb') as f:
             f.write(contents)
         
@@ -256,7 +284,8 @@ async def detect_objects(file: UploadFile = File(...)):
                     })
         
         # Clean up
-        os.remove(temp_path)
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
         
         print(f"✅ Detection complete: {len(detections)} objects found")
         
@@ -372,19 +401,26 @@ async def segment_point(
         
         mask = masks[0]
         
-        os.makedirs('outputs', exist_ok=True)
+        # --- PATH FIX: USE OUTPUTS_DIR ---
         timestamp = int(time_module.time() * 1000)
         
+        # 1. Define Filenames
+        mask_filename = f'mask_{timestamp}.png'
+        viz_filename = f'viz_{timestamp}.png'
+        
+        # 2. Define Absolute Paths (For Saving)
+        mask_path = os.path.join(OUTPUTS_DIR, mask_filename)
+        viz_path = os.path.join(OUTPUTS_DIR, viz_filename)
+        
+        # 3. Save Files
         mask_binary = (mask * 255).astype(np.uint8)
         mask_img = Image.fromarray(mask_binary)
-        mask_path = f'outputs/mask_{timestamp}.png'
         mask_img.save(mask_path)
         
         viz_img = image_np.copy().astype(np.float32)
         viz_img[mask] = [0, 255, 0]
         viz_img = np.clip(viz_img, 0, 255).astype(np.uint8)
         viz_img_pil = Image.fromarray(viz_img)
-        viz_path = f'outputs/viz_{timestamp}.png'
         viz_img_pil.save(viz_path)
         
         pixels = int(np.sum(mask))
@@ -392,13 +428,13 @@ async def segment_point(
         coverage = (pixels / total_pixels) * 100
         confidence = float(scores[0])
         
-        print(f"   ✅ Segmentation success!")
+        print(f"   ✅ Segmentation success! Saved to {mask_path}")
         
-        # Use to_native helper to clean response
+        # 4. Return URLs (For Frontend - Relative to Server Root)
         return JSONResponse(to_native({
             "success": True,
-            "mask": f"/{mask_path}",
-            "visualization": f"/{viz_path}",
+            "mask": f"/outputs/{mask_filename}",
+            "visualization": f"/outputs/{viz_filename}",
             "pixels": pixels,
             "coverage_percent": coverage,
             "confidence": confidence,
@@ -437,10 +473,19 @@ async def segment_automatic(file: UploadFile = File(...)):
             multimask_output=True
         )
         
-        os.makedirs('outputs', exist_ok=True)
+        # --- PATH FIX: USE OUTPUTS_DIR ---
         timestamp = int(time_module.time() * 1000)
-        viz_img = image_np.copy().astype(np.float32)
         
+        # 1. Define Filenames
+        viz_filename = f'auto_viz_{timestamp}.png'
+        mask_filename = f'auto_mask_{timestamp}.png'
+        
+        # 2. Define Absolute Paths
+        viz_path = os.path.join(OUTPUTS_DIR, viz_filename)
+        mask_path = os.path.join(OUTPUTS_DIR, mask_filename)
+        
+        # 3. Save Visualization
+        viz_img = image_np.copy().astype(np.float32)
         colors = [
             [255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0],
             [255, 0, 255], [0, 255, 255], [255, 165, 0], [128, 0, 128],
@@ -452,27 +497,26 @@ async def segment_automatic(file: UploadFile = File(...)):
         
         viz_img = np.clip(viz_img, 0, 255).astype(np.uint8)
         viz_img_pil = Image.fromarray(viz_img)
-        viz_path = f'outputs/auto_viz_{timestamp}.png'
         viz_img_pil.save(viz_path)
         
+        # 4. Save Mask
         combined_mask = np.zeros_like(masks[0], dtype=bool)
         for mask in masks:
             combined_mask = combined_mask | mask
         
         mask_binary = (combined_mask * 255).astype(np.uint8)
         mask_img = Image.fromarray(mask_binary)
-        mask_path = f'outputs/auto_mask_{timestamp}.png'
         mask_img.save(mask_path)
         
         pixels = int(np.sum(combined_mask))
         coverage = (pixels / (image_np.shape[0] * image_np.shape[1])) * 100
         avg_confidence = float(np.mean(scores))
         
-        # Use to_native helper to clean response
+        # 5. Return URLs
         return JSONResponse(to_native({
             "success": True,
-            "mask": f"/{mask_path}",
-            "visualization": f"/{viz_path}",
+            "mask": f"/outputs/{mask_filename}",
+            "visualization": f"/outputs/{viz_filename}",
             "objects_found": len(masks),
             "pixels": pixels,
             "coverage_percent": coverage,
@@ -498,23 +542,27 @@ async def segment_box(
     Segment image using a bounding box prompt (SAM).
     """
     try:
+        # Parse box coordinates
         box_list = json.loads(box)
         if len(box_list) != 4:
             raise ValueError("Box must be a list of four numbers [x1, y1, x2, y2]")
         
         print(f"🎯 Box segmentation request: box={box_list}, class={class_name}")
 
+        # Read and prepare image
         image_data = await file.read()
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
         image_np = np.array(image)
         h, w = image_np.shape[:2]
 
+        # Coordinate clipping/validation
         x1, y1, x2, y2 = map(int, box_list)
         x1 = np.clip(x1, 0, w-1); y1 = np.clip(y1, 0, h-1)
         x2 = np.clip(x2, 0, w-1); y2 = np.clip(y2, 0, h-1)
         if x2 <= x1 or y2 <= y1:
             raise ValueError("Invalid box coordinates after clipping")
 
+        # Initialize/Load SAM Engine
         engine = get_sam_engine()
         pred = engine.predictor
         pred.set_image(image_np)
@@ -522,7 +570,7 @@ async def segment_box(
         print("   Running SAM prediction with bounding box...")
         box_np = np.array(box_list, dtype=np.float32)
         
-        # NOTE: Standard SAM Predictor 'predict' method takes 'box' as a separate argument.
+        # Run Prediction
         masks, scores, logits = pred.predict(
             point_coords=None,
             point_labels=None,
@@ -532,44 +580,53 @@ async def segment_box(
         mask = masks[0]
         score = scores[0] if len(scores) > 0 else 0.0
 
-        os.makedirs('outputs', exist_ok=True)
+        # --- PATH FIX: USE OUTPUTS_DIR ---
         timestamp = int(time.time() * 1000)
 
-        # 1. Mask
+        # 1. Define Filenames
+        mask_filename = f'mask_{timestamp}.png'
+        crop_filename = f'crop_{timestamp}.png'
+        obj_filename = f'object_{timestamp}.png'
+
+        # 2. Define Absolute Paths (For Saving)
+        mask_path = os.path.join(OUTPUTS_DIR, mask_filename)
+        crop_path = os.path.join(OUTPUTS_DIR, crop_filename)
+        obj_path = os.path.join(OUTPUTS_DIR, obj_filename)
+
+        # 3. Save Mask
         mask_binary = (mask * 255).astype(np.uint8)
         mask_img = Image.fromarray(mask_binary)
-        mask_path = f'outputs/mask_{timestamp}.png'
         mask_img.save(mask_path)
 
-        # 2. Crop
+        # 4. Save Crop
         crop_img = image.crop((x1, y1, x2, y2))
-        crop_path = f'outputs/crop_{timestamp}.png'
         crop_img.save(crop_path)
 
-        # 3. Transparent Object
+        # 5. Save Transparent Object
         image_rgba = image.convert("RGBA")
         alpha_mask = Image.fromarray(mask_binary).convert("L")
         image_rgba.putalpha(alpha_mask)
-        object_path = f'outputs/object_{timestamp}.png'
-        image_rgba.save(object_path)
+        image_rgba.save(obj_path)
 
+        # Calculate metrics
         pixels = int(np.sum(mask))
         coverage = (pixels / (h * w)) * 100
         
-        # Use to_native helper to ensure JSON compatibility
+        # 6. Construct Response (Return URLs)
         response_data = {
             "success": True,
             "box": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
             "class_name": class_name,
-            "mask": f"/{mask_path}",
-            "crop": f"/{crop_path}",
-            "object": f"/{object_path}",
+            "mask": f"/outputs/{mask_filename}",
+            "crop": f"/outputs/{crop_filename}",
+            "object": f"/outputs/{obj_filename}",
             "pixels": pixels,
             "coverage_percent": coverage,
             "confidence": score,
             "image_size": {"width": w, "height": h}
         }
 
+        print(f"   ✅ Box segmentation success! Saved to {mask_path}")
         return JSONResponse(to_native(response_data))
 
     except ValueError as e:
@@ -599,7 +656,8 @@ async def upload_video(file: UploadFile = File(...)):
                 content={'error': f'Invalid format. Supported: {valid_video_formats}'}
             )
         
-        video_path = f"{settings.UPLOAD_FOLDER}/{file.filename}"
+        # Use Absolute Path for uploads
+        video_path = os.path.join(UPLOADS_DIR, file.filename)
         contents = await file.read()
         
         with open(video_path, 'wb') as f:
@@ -643,7 +701,8 @@ async def process_video(
         
         filename = os.path.basename(video_path)
         name, ext = os.path.splitext(filename)
-        output_path = f"{settings.UPLOAD_FOLDER}/{name}_detected.mp4"
+        # Save output to OUTPUTS_DIR (Absolute path)
+        output_path = os.path.join(OUTPUTS_DIR, f"{name}_detected.mp4")
         
         processor = get_video_processor(yolo_model)
         
@@ -675,18 +734,16 @@ async def process_video(
 async def download_video(file: str):
     """Download processed video file"""
     try:
-        file_path = os.path.join(settings.UPLOAD_FOLDER, file)
+        # Search in both output and upload folders to be safe
+        paths = [
+            os.path.join(OUTPUTS_DIR, file),
+            os.path.join(UPLOADS_DIR, file)
+        ]
+        for p in paths:
+            if os.path.exists(p):
+                return FileResponse(path=p, filename=file, media_type='video/mp4')
         
-        if not os.path.exists(file_path):
-            return JSONResponse(status_code=404, content={'error': 'File not found'})
-        
-        print(f"\n📥 Downloading: {file}")
-        
-        return FileResponse(
-            path=file_path,
-            filename=file,
-            media_type='video/mp4'
-        )
+        return JSONResponse(status_code=404, content={'error': 'File not found'})
         
     except Exception as e:
         print(f"❌ Download error: {str(e)}")
@@ -791,7 +848,6 @@ async def global_exception_handler(request, exc):
     )
 
 if __name__ == '__main__':
-    import uvicorn
     print("\n" + "="*70)
     print("🚀 VISLANG BACKEND - STARTING SERVER")
     print("="*70)
@@ -814,8 +870,8 @@ if __name__ == '__main__':
     print("="*70 + "\n")
     
     uvicorn.run(
-        app,
-        host=settings.SERVER_HOST,
-        port=settings.SERVER_PORT,
+        app, 
+        host=settings.SERVER_HOST, 
+        port=settings.SERVER_PORT, 
         reload=True
     )

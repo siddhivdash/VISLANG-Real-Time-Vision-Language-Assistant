@@ -5,7 +5,7 @@ const API_URL = 'http://localhost:8000';
 let currentImageFile = null;
 let currentChatFile = null;
 let videoOutputFile = null;
-let currentVideoPath = null; // NEW: Tracks the raw video path for summarization
+let currentVideoPath = null;
 
 // Segmentation variables
 let segmentationImage = null;
@@ -35,13 +35,14 @@ async function checkStatus() {
     try {
         const r = await fetch(`${API_URL}/health`);
         if (r.ok) {
-            document.getElementById('statusBar').textContent = '✅ Connected';
-            document.getElementById('statusBar').style.color = 'green';
+            const statusBar = document.getElementById('statusBar');
+            statusBar.innerHTML = '<span class="status-dot" style="background:green"></span> Connected';
+            statusBar.style.color = 'green';
         } else {
-            document.getElementById('statusBar').textContent = '⚠️ Error';
+            document.getElementById('statusBar').innerHTML = '<span class="status-dot" style="background:red"></span> Error';
         }
     } catch (e) {
-        document.getElementById('statusBar').textContent = '❌ Offline';
+        document.getElementById('statusBar').innerHTML = '<span class="status-dot" style="background:gray"></span> Offline';
         console.error('Backend check failed:', e);
     }
 }
@@ -104,8 +105,9 @@ async function detectImage() {
     }
 
     try {
-        document.getElementById('detectBtn').disabled = true;
-        document.getElementById('detectBtn').textContent = '⏳ Detecting...';
+        const btn = document.getElementById('detectBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Detecting...';
         document.getElementById('loadingMsg').classList.remove('hidden');
         document.getElementById('errorMsg').classList.add('hidden');
 
@@ -126,13 +128,15 @@ async function detectImage() {
         document.getElementById('fileName').textContent = data.filename || 'image';
         document.getElementById('objCount').textContent = data.detections.length;
         document.getElementById('results').classList.remove('hidden');
+        document.getElementById('detTip').classList.remove('hidden');
 
     } catch (e) {
         console.error(e);
         showError(e.message);
     } finally {
-        document.getElementById('detectBtn').disabled = false;
-        document.getElementById('detectBtn').textContent = '🚀 Detect Objects';
+        const btn = document.getElementById('detectBtn');
+        btn.disabled = false;
+        btn.innerHTML = 'Run Detection';
         document.getElementById('loadingMsg').classList.add('hidden');
     }
 }
@@ -149,14 +153,12 @@ function drawDetections(selectedIndex = -1) {
         const w = x2 - x1;
         const h = y2 - y1;
 
-        ctx.lineWidth = 4;
+        ctx.lineWidth = selectedIndex === i ? 6 : 4;
+        ctx.strokeStyle = selectedIndex === i ? '#00FF00' : '#00CCFF';
         
-        if (i === selectedIndex) {
-            ctx.strokeStyle = '#00FF00'; // Green for selected
+        if (selectedIndex === i) {
             ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
             ctx.fillRect(x1, y1, w, h);
-        } else {
-            ctx.strokeStyle = '#00CCFF'; // Blue for others
         }
         
         ctx.strokeRect(x1, y1, w, h);
@@ -184,7 +186,7 @@ function handleDetectionCanvasClick(e) {
     const clickX = (e.clientX - rect.left) * scaleX;
     const clickY = (e.clientY - rect.top) * scaleY;
 
-    // Find clicked box
+    // Find clicked box (iterate reverse to find top-most box)
     let clickedIdx = -1;
     for (let i = detDetections.length - 1; i >= 0; i--) {
         const { x1, y1, x2, y2 } = detDetections[i].bbox;
@@ -223,21 +225,27 @@ async function runSAMOnBox(detection) {
 
         if (!r.ok) throw new Error(data.error);
 
-        // Update Panel UI
+        // Update Panel UI Stats
         document.getElementById('samClass').textContent = data.class_name;
         document.getElementById('samArea').textContent = data.pixels + ' px';
         document.getElementById('samConf').textContent = (data.confidence * 100).toFixed(1) + '%';
 
-        // Update Images
+        // Update Images with Error Checking
         const baseUrl = API_URL;
-        document.getElementById('samNoBg').src = baseUrl + data.object;
-        document.getElementById('dlNoBg').href = baseUrl + data.object;
-        
-        document.getElementById('samCrop').src = baseUrl + data.crop;
-        document.getElementById('dlCrop').href = baseUrl + data.crop;
 
-        document.getElementById('samMask').src = baseUrl + data.mask;
-        document.getElementById('dlMask').href = baseUrl + data.mask;
+        // 1. Transparent Object (No BG)
+        const noBgImg = document.getElementById('samNoBg');
+        if(noBgImg) noBgImg.src = baseUrl + data.object;
+        const dlNoBg = document.getElementById('dlNoBg');
+        if(dlNoBg) dlNoBg.href = baseUrl + data.object;
+        
+        // 2. Crop
+        const cropImg = document.getElementById('samCrop');
+        if (cropImg) cropImg.src = baseUrl + data.crop;
+        
+        // 3. Mask
+        const maskImg = document.getElementById('samMask');
+        if (maskImg) maskImg.src = baseUrl + data.mask;
 
         content.classList.remove('hidden');
 
@@ -344,7 +352,6 @@ function setupVideo() {
         const file = e.target.files[0];
         if (!file) return;
         document.getElementById('videoName').textContent = file.name;
-        document.getElementById('videoSize').textContent = (file.size / (1024 * 1024)).toFixed(2);
         document.getElementById('videoInfo').classList.remove('hidden');
         document.getElementById('processBtn').classList.remove('hidden');
         document.getElementById('stats').classList.add('hidden');
@@ -355,14 +362,9 @@ function setupVideo() {
     });
 }
 
-function updateThresh() {
-    const val = document.getElementById('threshold').value;
-    document.getElementById('threshDisplay').textContent = parseFloat(val).toFixed(2);
-}
-
 async function processVideo() {
     const file = document.getElementById('videoInput').files[0];
-    const thresh = parseFloat(document.getElementById('threshold').value);
+    const thresh = 0.5; // Default
 
     if (!file) {
         alert('Select video');
@@ -370,8 +372,9 @@ async function processVideo() {
     }
 
     try {
-        document.getElementById('processBtn').disabled = true;
-        document.getElementById('processBtn').textContent = '⏳ Starting...';
+        const btn = document.getElementById('processBtn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Starting...';
         document.getElementById('progress').classList.remove('hidden');
         document.getElementById('videoError').classList.add('hidden');
 
@@ -413,8 +416,9 @@ async function processVideo() {
         err.classList.remove('hidden');
         document.getElementById('progress').classList.add('hidden');
     } finally {
-        document.getElementById('processBtn').disabled = false;
-        document.getElementById('processBtn').textContent = '🚀 Process';
+        const btn = document.getElementById('processBtn');
+        btn.disabled = false;
+        btn.textContent = 'Start Processing';
     }
 }
 
@@ -427,12 +431,13 @@ async function summarizeVideo() {
 
     const btn = document.getElementById('summarizeBtn');
     const loading = document.getElementById('summaryLoading');
-    const result = document.getElementById('summaryResult');
+    const resultDiv = document.getElementById('summaryResult');
     const textDiv = document.getElementById('summaryText');
 
     btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Analyzing...';
     loading.classList.remove('hidden');
-    result.classList.add('hidden');
+    resultDiv.classList.add('hidden');
 
     try {
         const fd = new FormData();
@@ -448,13 +453,14 @@ async function summarizeVideo() {
         if (!r.ok) throw new Error(data.error || 'Summarization failed');
 
         textDiv.innerText = data.summary;
-        result.classList.remove('hidden');
+        resultDiv.classList.remove('hidden');
 
     } catch (e) {
         console.error(e);
         alert("Failed to summarize: " + e.message);
     } finally {
         btn.disabled = false;
+        btn.innerHTML = 'Generate Summary';
         loading.classList.add('hidden');
     }
 }
@@ -493,7 +499,6 @@ function setupSegmentation() {
                 document.getElementById('segPreview').classList.remove('hidden');
                 document.getElementById('segControls').classList.remove('hidden');
                 document.getElementById('segResults').classList.add('hidden');
-                document.getElementById('promptCount').textContent = '0';
                 document.getElementById('segStatus').textContent = '✅ Ready for clicks';
                 addSegmentationClickHandlers();
             };
@@ -530,7 +535,6 @@ function addSegmentationPrompt(x, y, label) {
     ctx.strokeStyle = label === 1 ? 'green' : 'red';
     ctx.lineWidth = 2;
     ctx.stroke();
-    document.getElementById('promptCount').textContent = currentSegPrompts.length;
     document.getElementById('segStatus').textContent = `Added ${currentSegPrompts.length} prompt(s)`;
 }
 
@@ -540,9 +544,10 @@ async function runSegmentation() {
         return;
     }
     try {
-        document.getElementById('segLoading').classList.remove('hidden');
-        document.getElementById('segError').classList.add('hidden');
+        document.getElementById('segControls').classList.add('hidden'); // Hide controls during load
         document.getElementById('segStatus').textContent = '⏳ Processing...';
+        document.getElementById('segLoading').classList.remove('hidden');
+        
         segmentationCanvas.toBlob(async (blob) => {
             try {
                 const formData = new FormData();
@@ -551,6 +556,7 @@ async function runSegmentation() {
                 const labels = currentSegPrompts.map(p => p[2]);
                 formData.append('points', JSON.stringify(points));
                 formData.append('labels', JSON.stringify(labels));
+                
                 const response = await fetch(`${API_URL}/api/v1/segment/point`, { method: 'POST', body: formData });
                 if (!response.ok) {
                     const error = await response.json();
@@ -558,23 +564,23 @@ async function runSegmentation() {
                 }
                 const result = await response.json();
                 lastSegmentationResult = result;
-                document.getElementById('segConfidence').textContent = (result.confidence * 100).toFixed(2) + '%';
-                document.getElementById('segPixels').textContent = result.pixels;
-                document.getElementById('segCoverage').textContent = result.coverage_percent.toFixed(2) + '%';
+                
                 document.getElementById('segResults').classList.remove('hidden');
                 document.getElementById('segStatus').textContent = '✅ Segmentation complete!';
+                
                 const vizImg = new Image();
                 vizImg.onload = () => { segmentationCtx.drawImage(vizImg, 0, 0); };
                 vizImg.src = `${API_URL}${result.visualization}`;
+                
             } catch (e) {
-                document.getElementById('segError').textContent = '❌ ' + e.message;
-                document.getElementById('segError').classList.remove('hidden');
+                alert('Segmentation Error: ' + e.message);
             } finally {
+                document.getElementById('segControls').classList.remove('hidden');
                 document.getElementById('segLoading').classList.add('hidden');
             }
         }, 'image/png');
     } catch (e) {
-        document.getElementById('segError').textContent = '❌ ' + e.message;
+        alert('Error: ' + e.message);
     }
 }
 
@@ -582,7 +588,6 @@ function clearSegPoints() {
     if (!segmentationImage) return;
     segmentationCtx.drawImage(segmentationImage, 0, 0);
     currentSegPrompts = [];
-    document.getElementById('promptCount').textContent = '0';
     document.getElementById('segStatus').textContent = '✅ Clicks cleared';
 }
 
@@ -594,9 +599,7 @@ function resetSegmentation() {
     document.getElementById('segPreview').classList.add('hidden');
     document.getElementById('segControls').classList.add('hidden');
     document.getElementById('segResults').classList.add('hidden');
-    document.getElementById('segError').classList.add('hidden');
     document.getElementById('segStatus').textContent = 'Ready for clicks';
-    document.getElementById('promptCount').textContent = '0';
 }
 
 function downloadSegViz() {

@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # --- BACKEND SERVICE ---
+  vislang-backend:
+    container_name: vislang_container
+    # This builds using the Dockerfile in the ROOT (VISLANG/)
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/outputs:/app/backend/outputs
+      - ./backend/uploads:/app/backend/uploads
+      - ./backend/models:/app/backend/models
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - NVIDIA_VISIBLE_DEVICES=all
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+    restart: unless-stopped
+
+  # --- FRONTEND SERVICE ---
+  vislang-frontend:
+    container_name: vislang_frontend
+    # This builds using the Dockerfile inside the FRONTEND folder (VISLANG/frontend/)
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - vislang-backend
+    restart: unless-stopped
