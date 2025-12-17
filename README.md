@@ -95,44 +95,54 @@ The application follows a decoupled **Client-Server architecture** containerized
 By default, Ollama only listens to your local computer. To let the Docker container access it, you must expose it.
 
 **For Windows (PowerShell Admin):**
-```powershell
+```bash
 [Environment]::SetEnvironmentVariable('OLLAMA_HOST', '0.0.0.0', 'User')
-
-After running this, **restart the Ollama app** from the taskbar.
+```
+_After running this, **restart the Ollama app** from the taskbar._
 
 **For Mac/Linux:**
+```bash
+launchctl setenv OLLAMA_HOST "0.0.0.0
+```
 
-Bash
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   launchctl setenv OLLAMA_HOST "0.0.0.0"  # Or add to your shell profile and restart Ollama   `
+    
+    # Or add to your shell profile and restart Ollama
 
 ### Step 2: Start the Application
 
-Open your terminal in the project root folder (VISLANG/) and run:
+Open your terminal in the project root folder (`VISLANG/`) and run:
 
-Bash
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   docker-compose up --build   `
-
+```bash
+docker-compose up --build
+```
 ### Step 3: Access the App
 
 Once the logs show the server is running:
 
-*   Open your browser and go to: [**http://localhost:3000**](https://www.google.com/search?q=http://localhost:3000)
+*   Open your browser and go to: **`http://localhost:3000`**
     
 
 ### Step 4: Stop the App
 
 To shut everything down cleanly:
 
-Bash
+docker-compose down
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   docker-compose down   `
+* * *
 
-📂 Project Structure
---------------------
+## 📂 Project Structure
 
 Plaintext
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   VISLANG/  ├── backend/                 # Python FastAPI Server  │   ├── main.py              # API Entry point  │   ├── models/              # AI Model logic (YOLO, SAM, Ollama)  │   ├── outputs/             # Generated masks/crops (Volume mapped)  │   └── uploads/             # User uploaded files  ├── frontend/                # Node.js Client  │   ├── public/              # HTML/CSS/JS Assets  │   └── server.js            # Express static file server  ├── docker-compose.yml       # Orchestration config  └── Dockerfile               # Backend build instructions   `
+    VISLANG/
+    ├── backend/                 # Python FastAPI Server
+    │   ├── main.py              # API Entry point
+    │   ├── models/              # AI Model logic (YOLO, SAM, Ollama)
+    │   ├── outputs/             # Generated masks/crops (Volume mapped)
+    │   └── uploads/             # User uploaded files
+    ├── frontend/                # Node.js Client
+    │   ├── public/              # HTML/CSS/JS Assets
+    │   └── server.js            # Express static file server
+    ├── docker-compose.yml       # Orchestration config
+    └── Dockerfile               # Backend build instructions
 
