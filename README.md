@@ -1,9 +1,8 @@
-#   <img src="frontend/public/images/vislang-logo.jpg" alt="VisLang Dashboard" width="200"/>
-  <br><br> - Real-Time Vision-Language Assistant
-
+# VisLang - Real-Time Vision-Language Assistant
 
 <div align="center">
-
+  <img src="frontend/public/images/vislang-logo.jpg" alt="VisLang Dashboard" width="800"/>
+  <br><br>
   <img src="frontend/public/images/Landingpage.png" alt="VisLang Dashboard" width="800"/>
   <br><br>
   <img src="frontend/public/images/Dashboard.png" alt="VisLang Dashboard" width="800"/>
